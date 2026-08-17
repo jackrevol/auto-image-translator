@@ -1,0 +1,47 @@
+#jit-toast,
+.jit-replaced-background {
+  isolation: isolate !important;
+}
+
+.jit-capture-background-only > * {
+  visibility: hidden !important;
+}
+
+.jit-replaced-background::before,
+.jit-replaced-background::after {
+  content: none !important;
+}
+
+#jit-toast {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  top: 20px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  max-width: min(520px, calc(100vw - 32px)) !important;
+  padding: 11px 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 12px !important;
+  color: #ffffff !important;
+  background: #172036 !important;
+  box-shadow: 0 12px 32px rgba(5, 12, 28, 0.28) !important;
+  font: 600 13px/1.45 "Malgun Gothic", sans-serif !important;
+  text-align: center !important;
+  pointer-events: none !important;
+}
+
+#jit-toast.jit-toast-success { background: #096b4b !important; }
+#jit-toast.jit-toast-error { background: #9f2d37 !important; }
+#jit-toast.jit-toast-progress::before {
+  content: "" !important;
+  display: inline-block !important;
+  width: 10px !important;
+  height: 10px !important;
+  margin-right: 8px !important;
+  border: 2px solid rgba(255, 255, 255, 0.35) !important;
+  border-top-color: #ffffff !important;
+  border-radius: 50% !important;
+  animation: jit-spin 0.75s linear infinite !important;
+}
+
+@keyframes jit-spin { to { transform: rotate(360deg); } }

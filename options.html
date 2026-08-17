@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>이미지 한글 번역기 설정</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="options-body">
+  <main class="settings-card">
+    <div class="brand-row settings-brand">
+      <div class="brand-mark" aria-hidden="true">あ<span>한</span></div>
+      <div>
+        <h1>번역기 설정</h1>
+        <p>현재 PC에 로그인된 Codex CLI를 연결합니다.</p>
+      </div>
+    </div>
+
+    <form id="settings-form">
+      <label for="bridge-url">로컬 브리지 주소</label>
+      <input id="bridge-url" name="bridgeUrl" type="url" value="http://127.0.0.1:38473" spellcheck="false" required>
+      <p class="help">기본값을 그대로 사용해도 됩니다. 외부 주소는 보안을 위해 허용하지 않습니다.</p>
+
+      <label for="bridge-token">연결 토큰</label>
+      <div class="secret-row">
+        <input id="bridge-token" name="bridgeToken" type="password" autocomplete="off" placeholder="CMD 창에 표시된 토큰" required>
+        <button id="toggle-token" class="field-button" type="button" aria-label="연결 토큰 표시">보기</button>
+      </div>
+      <p class="help"><code>bridge\\start-bridge.cmd</code>를 실행하면 CMD 창에 토큰이 표시됩니다. API 키가 아니며 이 PC의 브리지 연결만 보호합니다.</p>
+
+      <div class="field-grid">
+        <div>
+          <label for="min-width">최소 이미지 너비</label>
+          <input id="min-width" name="minWidth" type="number" min="40" max="1000" step="10">
+        </div>
+        <div>
+          <label for="min-height">최소 이미지 높이</label>
+          <input id="min-height" name="minHeight" type="number" min="30" max="1000" step="10">
+        </div>
+      </div>
+      <p class="help">기본 `120×80px`보다 작은 표시 영역과 원본 파일은 아이콘으로 간주해 제외합니다.</p>
+
+      <label for="parallelism">동시 번역 이미지 수</label>
+      <input id="parallelism" name="parallelism" type="number" min="1" max="6" step="1">
+      <p class="help">기본값 3을 권장합니다. 값을 높이면 빨라질 수 있지만 Codex 사용량 제한과 PC 메모리 사용량도 함께 증가합니다.</p>
+
+      <label for="max-auto-qa-attempts">자동 재검수 횟수</label>
+      <input id="max-auto-qa-attempts" name="maxAutoQaAttempts" type="number" min="1" max="5" step="1">
+      <p class="help">이미지 합성 결과가 품질검수를 통과하지 못할 때 자동으로 재합성·재검수할 최대 횟수입니다.</p>
+
+      <p class="help page-scan-help">원본 이미지 URL을 직접 내려받아 처리하므로 다른 탭을 보거나 Chrome을 최소화해도 됩니다. 원본을 내려받을 수 없는 특수 이미지만 화면 캡처를 사용합니다.</p>
+
+      <button class="primary-button save-button" type="submit">설정 저장</button>
+      <button id="test-connection" class="secondary-button" type="button">브리지 연결 확인</button>
+      <p id="save-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="privacy-note">
+      <h2>처리 범위</h2>
+      <p>현재 페이지에 포함된 이미지 원본을 확장 프로그램이 직접 내려받아 로컬 브리지로 전송합니다. 브리지는 로그인된 Codex CLI를 읽기 전용·일회성 모드로 실행하며, 임시 이미지는 처리 직후 삭제합니다. 외부 서버에는 Codex가 사용하는 서비스 외에 이미지를 전송하지 않습니다.</p>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

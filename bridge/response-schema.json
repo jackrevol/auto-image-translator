@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "box": {
+            "type": "array",
+            "description": "[xmin, ymin, xmax, ymax] normalized to 0..1000; X coordinates always come first",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "layoutBox": {
+            "type": "array",
+            "description": "Safe Korean text area as [xmin, ymin, xmax, ymax] normalized to 0..1000",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "original": { "type": "string" },
+          "translated": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "regionKind": { "type": "string", "enum": ["dialogue", "narration", "sfx", "label"] },
+          "orientation": { "type": "string", "enum": ["horizontal", "vertical"] },
+          "fontSize": { "type": "number" },
+          "textColor": { "type": "string" },
+          "backgroundColor": { "type": "string" },
+          "bold": { "type": "boolean" },
+          "fontStyle": { "type": "string", "enum": ["sans", "serif", "rounded", "handwritten", "display"] },
+          "strokeColor": { "type": "string" },
+          "strokeWidth": { "type": "number" },
+          "italic": { "type": "boolean" },
+          "rotation": { "type": "number" },
+          "align": { "type": "string", "enum": ["left", "center", "right"] },
+          "backgroundComplex": { "type": "boolean" }
+        },
+        "required": [
+          "box",
+          "layoutBox",
+          "original",
+          "translated",
+          "confidence",
+          "regionKind",
+          "orientation",
+          "fontSize",
+          "textColor",
+          "backgroundColor",
+          "bold",
+          "fontStyle",
+          "strokeColor",
+          "strokeWidth",
+          "italic",
+          "rotation",
+          "align",
+          "backgroundComplex"
+        ]
+      }
+    }
+  },
+  "required": ["regions"]
+}

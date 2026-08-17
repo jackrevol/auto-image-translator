@@ -1,0 +1,223 @@
+:root {
+  color-scheme: light;
+  font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  color: #172036;
+  background: #eef3f8;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+.popup-body {
+  width: 340px;
+  min-height: 300px;
+  padding: 14px;
+  background: linear-gradient(145deg, #eff7ff 0%, #f7f4ff 100%);
+}
+
+.popup-card,
+.settings-card {
+  border: 1px solid #dfe7f1;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 50px rgba(31, 54, 87, 0.12);
+}
+
+.popup-card { padding: 20px; }
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.brand-mark {
+  position: relative;
+  display: grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  place-items: center;
+  border-radius: 15px;
+  color: #ffffff;
+  background: linear-gradient(145deg, #635bff, #2a7de1);
+  box-shadow: 0 8px 20px rgba(76, 91, 224, 0.28);
+  font: 800 22px/1 Georgia, serif;
+}
+
+.brand-mark span {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #0d9971;
+  font: 700 11px/1 sans-serif;
+}
+
+h1 { margin: 0 0 4px; font-size: 17px; line-height: 1.3; }
+.brand-row p { margin: 0; color: #68758a; font-size: 12px; }
+
+button,
+input { font: inherit; }
+
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: 0.62; }
+
+.primary-button,
+.secondary-button {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border: 0;
+  color: #ffffff;
+  background: #3459d6;
+  box-shadow: 0 7px 18px rgba(52, 89, 214, 0.22);
+}
+
+.primary-button:hover:not(:disabled) { background: #294cc4; }
+
+kbd {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  color: #eaf0ff;
+  background: rgba(255, 255, 255, 0.1);
+  font: 500 9px/1.2 inherit;
+}
+
+.secondary-button {
+  margin-top: 9px;
+  border: 1px solid #d9e1ec;
+  color: #40506a;
+  background: #ffffff;
+}
+
+.secondary-button:hover:not(:disabled) { background: #f6f8fb; }
+
+.status {
+  min-height: 19px;
+  margin: 12px 2px 2px;
+  color: #647187;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.status[data-type="error"] { color: #b82d3b; }
+.status[data-type="success"] { color: #087a58; }
+
+.footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid #edf0f5;
+  color: #8792a3;
+  font-size: 11px;
+}
+
+.link-button {
+  padding: 2px;
+  border: 0;
+  color: #3459d6;
+  background: none;
+  font-weight: 700;
+}
+
+.options-body {
+  min-height: 100vh;
+  padding: 48px 20px;
+  background: linear-gradient(145deg, #edf6ff 0%, #f7f4ff 55%, #eefaf6 100%);
+}
+
+.settings-card {
+  width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 34px;
+}
+
+.settings-brand { margin-bottom: 30px; }
+
+form label {
+  display: block;
+  margin: 18px 0 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cfd8e5;
+  border-radius: 10px;
+  color: #172036;
+  background: #ffffff;
+  outline: none;
+}
+
+input:focus {
+  border-color: #506fe1;
+  box-shadow: 0 0 0 3px rgba(80, 111, 225, 0.13);
+}
+
+.secret-row { display: flex; gap: 8px; }
+
+.field-button {
+  min-width: 72px;
+  border: 1px solid #cfd8e5;
+  border-radius: 10px;
+  color: #40506a;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.help {
+  margin: 7px 2px 0;
+  color: #778397;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.save-button {
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.privacy-note {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 13px;
+  background: #f3f7fb;
+}
+
+.privacy-note h2 { margin: 0 0 6px; font-size: 13px; }
+.privacy-note p { margin: 0; color: #657288; font-size: 11px; line-height: 1.65; }
+
+@media (max-width: 520px) {
+  .options-body { padding: 18px 10px; }
+  .settings-card { padding: 22px 18px; }
+  .field-grid { grid-template-columns: 1fr; gap: 0; }
+}

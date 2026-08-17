@@ -1,0 +1,52 @@
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python virtual environments and caches
+.venv/
+venv/
+desktop/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# PyInstaller and build outputs
+desktop/build/
+desktop/build-*/
+desktop/dist/
+desktop/*.spec
+*.exe
+*.msi
+
+# Translation inputs, outputs, samples, and generated artifacts
+artifacts/
+samples/
+sample/
+*.zip
+*.cbz
+*_ko.*
+*-translated.*
+*-comparison.*
+
+# Local bridge credentials and runtime files
+bridge/.bridge-token
+bridge/*.token
+*.log
+*.tmp
+*.temp
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local environment files
+.env
+.env.*
+!.env.example
