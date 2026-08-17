@@ -26,6 +26,7 @@ $NodeExe = (Get-Command node -ErrorAction Stop).Source
     --add-binary "$NodeExe;runtime" `
     --add-data "$ProjectRoot\node_modules;node_modules" `
     --add-data "$ProjectRoot\bridge\server.js;bridge" `
+    --add-data "$ProjectRoot\bridge\codex-exec-args.js;bridge" `
     --add-data "$ProjectRoot\bridge\image-renderer.js;bridge" `
     --add-data "$ProjectRoot\bridge\ocr-preprocessor.js;bridge" `
     --add-data "$ProjectRoot\bridge\ocr-results.js;bridge" `

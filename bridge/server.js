@@ -22,6 +22,7 @@ const {
 } = require("./quality-prompts.js");
 const { TaskSemaphore } = require("./task-semaphore.js");
 const { removeTranslatorTempDir } = require("./temp-cleanup.js");
+const { buildCodexExecArgs } = require("./codex-exec-args.js");
 
 const HOST = "127.0.0.1";
 const PORT = normalizePort(process.env.IMAGE_TRANSLATOR_PORT || "38473");
@@ -532,19 +533,12 @@ async function runQualityPass({ requestId, imageIndex, tempDir, label, prompt, i
     logProgress(requestId, imageIndex, `${label} 진행 중 · ${formatDuration(Date.now() - startedAt)} 경과`);
   }, 10_000);
   try {
-    await runCodex([
-      "exec",
-      "--ephemeral",
-      "--sandbox", "read-only",
-      "--skip-git-repo-check",
-      "--ignore-rules",
-      "--color", "never",
-      "-C", tempDir,
-      "--image", ...images,
-      "--output-schema", schemaPath,
-      "--output-last-message", outputPath,
-      "-"
-    ], prompt, 300_000, control);
+    await runCodex(buildCodexExecArgs({
+      tempDir,
+      images,
+      schemaPath,
+      outputPath
+    }), prompt, 300_000, control);
   } finally {
     clearInterval(heartbeat);
   }
