@@ -492,3 +492,55 @@ test("회색 선화 위 작은 세로 글자의 안티앨리어싱 획만 정리
   assert.ok(pixels[(48 * width + 52) * channels] > 180, "글자의 회색 가장자리도 지워야 한다");
   assert.equal(pixels[(48 * width + 26) * channels], 185, "떨어져 있는 회색 선화는 유지해야 한다");
 });
+
+test("검은 패널의 대형 흰색 효과음은 지우고 긴 효과선은 보존한다", () => {
+  const width = 200;
+  const height = 150;
+  const channels = 4;
+  const pixels = Buffer.alloc(width * height * channels, 0);
+  for (let index = 3; index < pixels.length; index += channels) pixels[index] = 255;
+  const paintWhite = (x, y) => {
+    const index = (y * width + x) * channels;
+    pixels[index] = 255;
+    pixels[index + 1] = 255;
+    pixels[index + 2] = 255;
+  };
+
+  // 굵고 큰 장식 효과음 획을 흉내 냅니다. 기존 로직에서는 큰 선화로 분류되어 남았습니다.
+  for (let y = 35; y <= 90; y += 1) {
+    for (let x = 50; x <= 130; x += 1) paintWhite(x, y);
+  }
+  for (let y = 55; y <= 72; y += 1) {
+    for (let x = 80; x <= 130; x += 1) {
+      const index = (y * width + x) * channels;
+      pixels[index] = 0;
+      pixels[index + 1] = 0;
+      pixels[index + 2] = 0;
+    }
+  }
+  // 패널을 가로지르는 얇은 광선은 텍스트와 같은 흰색이어도 보존되어야 합니다.
+  for (let x = 0; x < width; x += 1) paintWhite(x, 110);
+
+  const region = {
+    left: 25,
+    top: 20,
+    right: 175,
+    bottom: 125,
+    width: 150,
+    height: 105,
+    fontSize: 20,
+    strokePx: 0,
+    textRgb: [255, 255, 255],
+    strokeRgb: [0, 0, 0],
+    backgroundRgb: [0, 0, 0],
+    backgroundComplex: true,
+    regionKind: "sfx",
+    orientation: "horizontal"
+  };
+
+  const result = removeOriginalText(pixels, width, height, channels, region);
+
+  assert.ok(result.removedPixels > 2000, "대형 흰색 효과음 획을 충분히 제거해야 한다");
+  assert.ok(pixels[(45 * width + 60) * channels] < 40, "효과음 중심이 검은 배경으로 복원되어야 한다");
+  assert.equal(pixels[(110 * width + 100) * channels], 255, "패널 전체를 가로지르는 흰 광선은 유지해야 한다");
+});

@@ -131,7 +131,8 @@ function removeOriginalText(pixels, imageWidth, imageHeight, channels, region) {
     complexBackground ? mask : lineCandidateMask,
     localWidth,
     localHeight,
-    region.fontSize
+    region.fontSize,
+    region.regionKind
   );
   for (let index = 0; index < mask.length; index += 1) {
     if (protectedLines[index]) mask[index] = 0;
@@ -145,7 +146,10 @@ function removeOriginalText(pixels, imageWidth, imageHeight, channels, region) {
   };
   const glyphMask = keepGlyphLikeComponents(mask, localWidth, localHeight, region.fontSize, focus, region.regionKind);
   const glyphPixels = countMaskPixels(glyphMask);
-  const maximumSafePixels = Math.max(1, Math.round(localWidth * localHeight * (complexBackground ? 0.22 : 0.38)));
+  const maximumSafeRatio = region.regionKind === "sfx"
+    ? 0.64
+    : complexBackground ? 0.22 : 0.38;
+  const maximumSafePixels = Math.max(1, Math.round(localWidth * localHeight * maximumSafeRatio));
   if (!glyphPixels || glyphPixels > maximumSafePixels) return { removedPixels: 0 };
 
   const localBounds = getMaskBounds(glyphMask, localWidth, localHeight);
@@ -158,7 +162,9 @@ function removeOriginalText(pixels, imageWidth, imageHeight, channels, region) {
   };
   recenterRegionOnBounds(region, cleanBounds, imageWidth, imageHeight);
 
-  const dilation = complexBackground
+  const dilation = region.regionKind === "sfx"
+    ? Math.max(3, Math.min(12, Math.round(region.fontSize * 0.055 + region.strokePx * 0.65)))
+    : complexBackground
     ? Math.max(2, Math.min(4, Math.round(region.fontSize * 0.045 + region.strokePx * 0.65)))
     : Math.max(4, Math.min(7, Math.round(region.fontSize * 0.16)));
   const expandedMask = dilateMask(glyphMask, localWidth, localHeight, dilation);
@@ -203,10 +209,19 @@ function getRemovalSearchBox(region) {
   };
 }
 
-function findLongLineMask(mask, width, height, fontSize) {
+function findLongLineMask(mask, width, height, fontSize, regionKind = null) {
   const protectedMask = new Uint8Array(mask.length);
-  const minimumHorizontalRun = Math.max(12, Math.round(fontSize * 4), Math.round(width * 0.72));
-  const minimumVerticalRun = Math.max(12, Math.round(fontSize * 4), Math.round(height * 0.72));
+  const sfxRegion = regionKind === "sfx";
+  const minimumHorizontalRun = Math.max(
+    12,
+    Math.round(fontSize * (sfxRegion ? 5.5 : 4)),
+    Math.round(width * (sfxRegion ? 0.9 : 0.72))
+  );
+  const minimumVerticalRun = Math.max(
+    12,
+    Math.round(fontSize * (sfxRegion ? 5.5 : 4)),
+    Math.round(height * (sfxRegion ? 0.9 : 0.72))
+  );
 
   for (let y = 0; y < height; y += 1) {
     let start = -1;
@@ -242,6 +257,7 @@ function findLongLineMask(mask, width, height, fontSize) {
 function keepGlyphLikeComponents(mask, width, height, fontSize, focus = null, regionKind = null) {
   const output = new Uint8Array(mask.length);
   const visited = new Uint8Array(mask.length);
+  const sfxRegion = regionKind === "sfx";
 
   for (let start = 0; start < mask.length; start += 1) {
     if (!mask[start] || visited[start]) continue;
@@ -282,20 +298,21 @@ function keepGlyphLikeComponents(mask, width, height, fontSize, focus = null, re
     const componentHeight = maxY - minY + 1;
     const longHorizontalLine = componentWidth > fontSize * 2.2 && componentHeight < fontSize * 0.42;
     const longVerticalLine = componentHeight > fontSize * 2.2 && componentWidth < fontSize * 0.42;
-    const surroundsText = componentWidth > width * 0.68 && componentHeight > height * 0.68;
-    const touchesTwoHorizontalEdges = minX === 0 && maxX === width - 1;
-    const touchesTwoVerticalEdges = minY === 0 && maxY === height - 1;
+    const surroundsText = !sfxRegion && componentWidth > width * 0.68 && componentHeight > height * 0.68;
+    const touchesTwoHorizontalEdges = !sfxRegion && minX === 0 && maxX === width - 1;
+    const touchesTwoVerticalEdges = !sfxRegion && minY === 0 && maxY === height - 1;
     const edgeMargin = Math.max(2, fontSize * 0.35);
-    const crossesHorizontalWindow =
+    const crossesHorizontalWindow = !sfxRegion &&
       minX <= edgeMargin &&
       maxX >= width - 1 - edgeMargin &&
       componentWidth > fontSize * 1.7;
-    const crossesVerticalWindow =
+    const crossesVerticalWindow = !sfxRegion &&
       minY <= edgeMargin &&
       maxY >= height - 1 - edgeMargin &&
       componentHeight > fontSize * 1.7;
-    const tooDense = component.length > width * height * 0.42;
+    const tooDense = component.length > width * height * (sfxRegion ? 0.72 : 0.42);
     const oversizedArtwork =
+      !sfxRegion &&
       componentWidth > fontSize * 2.8 &&
       componentHeight > fontSize * 2.8 &&
       component.length > fontSize * fontSize * 1.5;
