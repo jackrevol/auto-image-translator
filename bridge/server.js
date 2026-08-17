@@ -11,6 +11,7 @@ const {
   createOcrReference,
   createTextIsolationReference,
   createLightTextIsolationReference,
+  createLightTextDetailReferences,
   createLocalizationReference
 } = require("./ocr-preprocessor.js");
 const { selectReliableRegions, averageConfidence } = require("./ocr-results.js");
@@ -38,6 +39,7 @@ const PROMPT = [
   "두 번째 이미지가 있으면 첫 번째 이미지와 가로세로 비율이 같은 OCR 강화본이다. 확대, 흑백 대비, 선명화가 적용되었으므로 글자 판독에 적극 사용하라.",
   "첨부 이미지 중 순수 흑백으로 진한 잉크만 남긴 이미지가 있으면 글자 분리본이다. 저해상도 세로 글자와 문장부호 후보를 찾는 데 사용하되 검은 머리카락과 선화는 원본과 대조해 글자로 오인하지 마라.",
   "첨부 이미지 중 검은 배경의 흰색 요소가 검은색으로 반전된 이미지가 있으면 밝은 글자 분리본이다. 검은 배경 위 흰색·회색 일본어 효과음과 반전 대사를 찾는 데 사용하되 광선·속도선·눈동자·하이라이트는 원본과 대조해 제외하라.",
+  "밝은 글자 상세 크롭은 어두운 고대비 패널만 확대하고 얇은 망점·비산물·속도선을 약화한 자료다. 전체 반전본에서 작게 보이는 굵은 가나·한자 효과음의 형태를 판독하는 데 우선 사용하라.",
   "첨부 이미지 중 청록·분홍 X/Y 격자가 있는 이미지는 위치 기준본이다. 격자와 라벨은 OCR 대상이 아니며 오직 box 좌표 측정에만 사용하라.",
   "이미지에서 일본어 텍스트만 모두 찾고 자연스러운 한국어로 번역하라.",
   "각 문구를 원본과 OCR 강화본에서 각각 확인하고 글자의 획, 탁점, 반탁점, 장음, 작은 가나, 구두점을 한 글자씩 교차 검증하라.",
@@ -299,6 +301,7 @@ async function translateImage(image, metadata, requestId, control) {
     let ocrReference = null;
     let isolatedTextReference = null;
     let lightTextReference = null;
+    let lightTextDetails = [];
     let locatorReference = null;
     try {
       ocrReference = await createOcrReference(imagePath, ocrImagePath);
@@ -348,18 +351,36 @@ async function translateImage(image, metadata, requestId, control) {
       }
     }
 
+    try {
+      lightTextDetails = await createLightTextDetailReferences(imagePath, tempDir, { maxReferences: 4 });
+      if (lightTextDetails.length > 0) {
+        logProgress(requestId, imageIndex, `밝은 글자 상세 크롭 ${lightTextDetails.length}개 준비 완료 · 어두운 고대비 패널 확대`);
+        lightTextDetails.forEach((detail, index) => {
+          logProgress(
+            requestId,
+            imageIndex,
+            `밝은 글자 상세 #${index + 1} · 원본 좌표 [${detail.box.join(", ")}] · ${detail.width}×${detail.height}`
+          );
+        });
+      }
+    } catch (error) {
+      logProgress(requestId, imageIndex, `밝은 글자 상세 크롭 생성 실패 · 전체 반전본으로 계속 분석 · ${error.message}`);
+    }
+
     const referenceImages = [imagePath];
     if (ocrReference) referenceImages.push(ocrImagePath);
     if (isolatedTextReference) referenceImages.push(isolatedTextPath);
     if (lightTextReference) referenceImages.push(lightTextPath);
+    for (const detail of lightTextDetails) referenceImages.push(detail.path);
     if (locatorReference) referenceImages.push(locatorImagePath);
+    const detailGuide = buildLightTextDetailGuide(lightTextDetails, referenceImages);
 
     let result = await runQualityPass({
       requestId,
       imageIndex,
       tempDir,
       label: "정밀 판독 1/4",
-      prompt: PROMPT,
+      prompt: appendPromptGuide(PROMPT, detailGuide),
       images: referenceImages,
       outputPath: recognitionPath,
       control
@@ -369,7 +390,7 @@ async function translateImage(image, metadata, requestId, control) {
       imageIndex,
       tempDir,
       label: "누락·좌표 검수 2/4",
-      prompt: buildRegionAuditPrompt(result),
+      prompt: appendPromptGuide(buildRegionAuditPrompt(result), detailGuide),
       images: referenceImages,
       outputPath: auditPath,
       fallback: result,
@@ -380,7 +401,7 @@ async function translateImage(image, metadata, requestId, control) {
       imageIndex,
       tempDir,
       label: "번역·문맥 교정 3/4",
-      prompt: buildTranslationEditPrompt(result),
+      prompt: appendPromptGuide(buildTranslationEditPrompt(result), detailGuide),
       images: referenceImages,
       outputPath: translationPath,
       fallback: result,
@@ -411,6 +432,7 @@ async function translateImage(image, metadata, requestId, control) {
       logProgress(requestId, imageIndex, `${modeLabel} · 검수용 WebP 준비 완료 · ${formatBytes(previewBuffer.length)}`);
 
       const visualImages = [imagePath, previewPath, ...referenceImages.slice(1)];
+      const visualDetailGuide = buildLightTextDetailGuide(lightTextDetails, visualImages);
       const fallbackReview = {
         passed: false,
         summary: "시각 검수 호출 실패",
@@ -422,11 +444,14 @@ async function translateImage(image, metadata, requestId, control) {
         imageIndex,
         tempDir,
         label: `${modeLabel} · 합성 결과 시각 검수 4/4`,
-        prompt: buildVisualQaPrompt(result, {
-          attempt,
-          maximum: maximumQaAttempts,
-          manualReview
-        }),
+        prompt: appendPromptGuide(
+          buildVisualQaPrompt(result, {
+            attempt,
+            maximum: maximumQaAttempts,
+            manualReview
+          }),
+          visualDetailGuide
+        ),
         images: visualImages,
         outputPath: visualQaPath,
         schemaPath: VISUAL_QA_SCHEMA_PATH,
@@ -749,6 +774,30 @@ function formatSource(metadata) {
   } catch {
     return `${element} · 출처 미상`;
   }
+}
+
+function buildLightTextDetailGuide(details, images) {
+  if (!Array.isArray(details) || details.length === 0) return "";
+  const lines = [
+    "<bright_text_detail_guide>",
+    "다음 첨부들은 원본의 어두운 고대비 패널을 확대해 굵은 흰색 글자 중심부를 검게 반전한 OCR 보조 자료다. 얇은 선과 망점은 약화되어 있다."
+  ];
+  for (const detail of details) {
+    const attachmentIndex = images.indexOf(detail.path);
+    if (attachmentIndex < 0) continue;
+    lines.push(
+      `${attachmentIndex + 1}번째 첨부 = 원본 정규화 좌표 [${detail.box.join(", ")}] 상세. 이 첨부 자체의 좌표가 아니라 이 원본 좌표 범위로 box를 환산하라.`
+    );
+  }
+  lines.push(
+    "상세 크롭의 검은 덩어리가 실제 가나·한자 형태인지 원본과 대조하고, 광선·비산물·눈 하이라이트·인체 윤곽은 텍스트로 반환하지 마라.",
+    "</bright_text_detail_guide>"
+  );
+  return lines.join("\n");
+}
+
+function appendPromptGuide(prompt, guide) {
+  return guide ? `${prompt}\n${guide}` : prompt;
 }
 
 function formatBox(box) {

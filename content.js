@@ -1,6 +1,6 @@
 (function initializeImageTranslator() {
-  if (window.__imageTranslatorVersion === "2.8.0") return;
-  window.__imageTranslatorVersion = "2.8.0";
+  if (window.__imageTranslatorVersion === "2.8.1") return;
+  window.__imageTranslatorVersion = "2.8.1";
   window.__imageTranslatorLoaded = true;
 
   const state = {

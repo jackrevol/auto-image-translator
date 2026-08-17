@@ -28,6 +28,16 @@ def test_quality_pass_logs_are_mapped_to_detailed_stages() -> None:
     assert visual is not None and visual.stage == "4/4 시각 검수"
 
 
+def test_bright_sfx_detail_logs_are_mapped() -> None:
+    progress = parse_bridge_progress(
+        "[21:10:00] [작업 #9 · 이미지 #9] 밝은 글자 상세 크롭 3개 준비 완료 · 어두운 고대비 패널 확대"
+    )
+
+    assert progress is not None
+    assert progress.stage == "밝은 효과음 확대"
+    assert progress.state == "running"
+
+
 def test_zip_commit_is_a_terminal_completed_stage() -> None:
     progress = parse_bridge_progress(
         "[14:03:40] [작업 #7 · 이미지 #23] ZIP 이미지 저장 확인 · <zip>"

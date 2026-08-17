@@ -10,6 +10,7 @@ const {
   createOcrReference,
   createTextIsolationReference,
   createLightTextIsolationReference,
+  createLightTextDetailReferences,
   createLocalizationReference,
   createCoordinateGridSvg,
   calculateOcrDimensions
@@ -73,6 +74,58 @@ test("밝은 글자 반전본은 검은 배경의 흰 글자를 검은색으로 
     assert.equal(result.inverted, true);
     assert.ok(textPixel < 20, "흰 글자는 검은색으로 반전되어야 한다");
     assert.ok(backgroundPixel > 235, "검은 배경은 흰색으로 반전되어야 한다");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("어두운 패널의 굵은 흰색 효과음을 고해상도 상세 크롭으로 만든다", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jit-light-detail-test-"));
+  const inputPath = path.join(tempDir, "input.png");
+  try {
+    await sharp({
+      create: { width: 600, height: 900, channels: 3, background: "#ffffff" }
+    }).composite([{
+      input: Buffer.from(
+        '<svg width="600" height="900">' +
+        '<rect x="0" y="300" width="600" height="600" fill="#050505"/>' +
+        '<path d="M70 390 H220 V450 H140 V690 H70 Z" fill="#fff"/>' +
+        '<path d="M260 420 H430 V500 H340 V720 H260 Z" fill="#fff"/>' +
+        '<path d="M10 780 L590 700" stroke="#fff" stroke-width="2"/>' +
+        '</svg>',
+        "utf8"
+      )
+    }]).png().toFile(inputPath);
+
+    const details = await createLightTextDetailReferences(inputPath, tempDir, { maxReferences: 3 });
+
+    assert.ok(details.length >= 1, "어두운 고대비 패널을 하나 이상 선택해야 한다");
+    assert.ok(details.length <= 3, "설정한 상세 크롭 상한을 지켜야 한다");
+    assert.ok(details.some((detail) => detail.box[1] >= 250), "하단 어두운 패널 좌표를 선택해야 한다");
+    for (const detail of details) {
+      assert.ok(fs.existsSync(detail.path), "상세 크롭 PNG가 생성되어야 한다");
+      assert.ok(detail.darkRatio >= 0.24);
+      assert.ok(detail.brightRatio >= 0.012);
+    }
+    const decoded = await sharp(details[0].path).raw().toBuffer({ resolveWithObject: true });
+    assert.ok(decoded.data.some((value) => value < 20), "굵은 흰색 효과음이 검은 획으로 남아야 한다");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("어두운 패널이 없는 일반 흰 페이지에는 밝은 글자 상세 크롭을 만들지 않는다", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jit-no-light-detail-test-"));
+  const inputPath = path.join(tempDir, "input.png");
+  try {
+    await sharp({
+      create: { width: 400, height: 600, channels: 3, background: "#ffffff" }
+    }).composite([{
+      input: Buffer.from('<svg width="400" height="600"><text x="50" y="100" font-size="30">日本語</text></svg>', "utf8")
+    }]).png().toFile(inputPath);
+
+    const details = await createLightTextDetailReferences(inputPath, tempDir);
+    assert.deepEqual(details, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

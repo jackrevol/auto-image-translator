@@ -17,12 +17,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Local Codex Project'),
           StringStruct('FileDescription', 'Codex 이미지 한글 번역기 (Chrome + ZIP)'),
-          StringStruct('FileVersion', '2.8.0.0'),
+          StringStruct('FileVersion', '2.8.1.0'),
           StringStruct('InternalName', 'Image-Korean-Translator-ZIP'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026'),
           StringStruct('OriginalFilename', 'Image-Korean-Translator-ZIP.exe'),
           StringStruct('ProductName', '이미지 한글 번역기'),
-          StringStruct('ProductVersion', '2.8.0.0')
+          StringStruct('ProductVersion', '2.8.1.0')
         ]
       )
     ]),

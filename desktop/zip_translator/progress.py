@@ -72,6 +72,8 @@ def _classify_message(message: str) -> tuple[str, str, bool]:
         ("글자 분리본 생성 실패", "글자 분리 대체", "running", False),
         ("밝은 글자 반전본 준비 완료", "밝은 글자 분리", "running", False),
         ("밝은 글자 반전본 생성 실패", "밝은 글자 대체", "running", False),
+        ("밝은 글자 상세 크롭", "밝은 효과음 확대", "running", False),
+        ("밝은 글자 상세 #", "밝은 효과음 확대", "running", False),
         ("좌표 기준본 준비 완료", "좌표 검수", "running", False),
         ("좌표 기준본 생성 실패", "좌표 대체 처리", "running", False),
         ("정밀 판독 1/4", "1/4 정밀 판독", "running", False),
