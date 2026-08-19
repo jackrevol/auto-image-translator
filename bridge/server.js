@@ -645,7 +645,7 @@ async function renderWithSelectedMode({
   logProgress(
     requestId,
     imageIndex,
-    `Codex 대사 크롭 ${result.cropCount}개 · 작업 시트 ${result.atlasCount}개 코드 재조립 완료 · 원본 비대사 영역 유지`
+    `Codex 대사 크롭 ${result.cropCount}개 · 작업 시트 ${result.atlasCount}개 픽셀 안전 재조립 완료 · 원본 그림 유지`
   );
   return result.buffer;
 }
