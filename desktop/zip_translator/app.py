@@ -201,7 +201,7 @@ class TranslatorApp:
         self.render_mode_combo = ttk.Combobox(
             output,
             textvariable=self.render_mode_var,
-            values=("로컬 정밀 렌더", "Codex 전체 위임 렌더"),
+            values=("로컬 정밀 렌더", "Codex 통합 위임"),
             state="readonly",
             width=18,
         )
@@ -365,7 +365,7 @@ class TranslatorApp:
             self.bridge_token_var.get().strip(),
             max_auto_qa_attempts=self.quality_attempt_limit,
             render_mode=(
-                "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+                "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
             ),
         )
 
@@ -384,7 +384,7 @@ class TranslatorApp:
         self._set_parallel_limit(int(self.parallel_var.get()))
         self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
         self.render_mode = (
-            "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+            "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
         )
         try:
             client = self._client()
@@ -579,7 +579,7 @@ class TranslatorApp:
 
     def _on_render_mode_changed(self, _event: tk.Event | None = None) -> None:
         self.render_mode = (
-            "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+            "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
         )
         self.status_var.set(f"이미지 렌더 방식을 '{self.render_mode_var.get()}'로 설정했습니다.")
 

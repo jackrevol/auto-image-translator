@@ -1,6 +1,6 @@
 {
   "name": "local-codex-image-translator",
-  "version": "2.8.3",
+  "version": "2.8.4",
   "private": true,
   "description": "Chrome과 ZIP을 함께 지원하는 로컬 Codex 이미지 번역기",
   "scripts": {

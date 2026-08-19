@@ -48,6 +48,16 @@ def test_codex_image_render_log_is_mapped() -> None:
     assert progress.state == "running"
 
 
+def test_codex_integrated_render_log_is_mapped() -> None:
+    progress = parse_bridge_progress(
+        "[21:12:00] [작업 #10 · 이미지 #4] Codex 통합 번역·렌더 1회차 진행 중 · 30초 경과"
+    )
+
+    assert progress is not None
+    assert progress.stage == "Codex 통합 위임"
+    assert progress.state == "running"
+
+
 def test_zip_commit_is_a_terminal_completed_stage() -> None:
     progress = parse_bridge_progress(
         "[14:03:40] [작업 #7 · 이미지 #23] ZIP 이미지 저장 확인 · <zip>"

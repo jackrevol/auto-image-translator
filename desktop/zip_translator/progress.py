@@ -79,6 +79,7 @@ def _classify_message(message: str) -> tuple[str, str, bool]:
         ("정밀 판독 1/4", "1/4 정밀 판독", "running", False),
         ("누락·좌표 검수 2/4", "2/4 영역 검수", "running", False),
         ("번역·문맥 교정 3/4", "3/4 번역 교정", "running", False),
+        ("Codex 통합 번역·렌더", "Codex 통합 위임", "running", False),
         ("Codex 이미지 렌더", "Codex 전체 렌더", "running", False),
         ("렌더 모드", "렌더 방식", "running", False),
         ("품질 검수용 1차 합성", "검수본 합성", "running", False),

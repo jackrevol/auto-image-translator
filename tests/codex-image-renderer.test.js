@@ -8,10 +8,23 @@ const path = require("node:path");
 const sharp = require("sharp");
 const {
   buildCodexImageRenderPrompt,
+  buildCodexEndToEndPrompt,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage
 } = require("../bridge/codex-image-renderer.js");
+
+test("Codex 통합 위임 프롬프트는 판독부터 자체 검수까지 한 번에 수행한다", () => {
+  const prompt = buildCodexEndToEndPrompt({
+    attempt: 2,
+    issues: ["오른쪽 말풍선의 일본어가 남아 있음"]
+  });
+
+  assert.match(prompt, /별도의 OCR 좌표나 번역문이 제공되지 않는다/);
+  assert.match(prompt, /직접 정밀 판독하고, 번역하고, 원문을 제거하고, 한국어를 식자/);
+  assert.match(prompt, /결과를 자체 검수/);
+  assert.match(prompt, /오른쪽 말풍선의 일본어가 남아 있음/);
+});
 
 test("Codex 이미지 렌더 프롬프트는 정확한 번역과 원본 보존을 강제한다", () => {
   const prompt = buildCodexImageRenderPrompt([{
