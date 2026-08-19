@@ -4,10 +4,12 @@ const DEFAULT_SETTINGS = {
   minWidth: 120,
   minHeight: 80,
   parallelism: 3,
-  maxAutoQaAttempts: 3
+  maxAutoQaAttempts: 3,
+  renderMode: "local"
 };
 const CONTEXT_MENU_ID = "translate-single-image";
 const IMAGE_ANALYSIS_TIMEOUT_MS = 60 * 60 * 1000;
+const CODEX_IMAGE_ANALYSIS_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   const saved = await chrome.storage.local.get(DEFAULT_SETTINGS);
@@ -210,12 +212,15 @@ async function analyzeImage(image, metadata = {}) {
     throw new Error("이미지 데이터가 너무 큽니다.");
   }
 
-  const { bridgeUrl, bridgeToken, maxAutoQaAttempts } = await chrome.storage.local.get(DEFAULT_SETTINGS);
+  const { bridgeUrl, bridgeToken, maxAutoQaAttempts, renderMode } = await chrome.storage.local.get(DEFAULT_SETTINGS);
   if (!bridgeToken?.trim()) throw new Error("로컬 브리지 연결 토큰이 설정되지 않았습니다.");
   const safeBridgeUrl = normalizeBridgeUrl(bridgeUrl);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), IMAGE_ANALYSIS_TIMEOUT_MS);
+  const analysisTimeout = renderMode === "codex-image"
+    ? CODEX_IMAGE_ANALYSIS_TIMEOUT_MS
+    : IMAGE_ANALYSIS_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), analysisTimeout);
   try {
     const response = await fetch(
       `${safeBridgeUrl}/translate`,
@@ -230,7 +235,8 @@ async function analyzeImage(image, metadata = {}) {
           image,
           metadata: {
             ...metadata,
-            maxAutoQaAttempts: Math.min(5, Math.max(1, Number(maxAutoQaAttempts) || 3))
+            maxAutoQaAttempts: Math.min(5, Math.max(1, Number(maxAutoQaAttempts) || 3)),
+            renderMode: renderMode === "codex-image" ? "codex-image" : "local"
           }
         })
       }
@@ -248,7 +254,10 @@ async function analyzeImage(image, metadata = {}) {
       bridgeRequestId: Number(payload?.bridgeRequestId) || null
     };
   } catch (error) {
-    if (error.name === "AbortError") throw new Error("이미지 분석 시간이 60분을 초과했습니다.");
+    if (error.name === "AbortError") {
+      const hours = analysisTimeout / 60 / 60 / 1000;
+      throw new Error(`이미지 분석 시간이 ${hours}시간을 초과했습니다.`);
+    }
     if (error instanceof SyntaxError) throw new Error("로컬 브리지 응답을 해석하지 못했습니다.");
     throw error;
   } finally {

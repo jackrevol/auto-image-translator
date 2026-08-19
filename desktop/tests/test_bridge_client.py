@@ -6,7 +6,11 @@ from typing import Any
 
 from PIL import Image
 
-from zip_translator.bridge_client import BridgeClient, TRANSLATION_TIMEOUT_SECONDS
+from zip_translator.bridge_client import (
+    BridgeClient,
+    CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS,
+    TRANSLATION_TIMEOUT_SECONDS,
+)
 
 
 def _image_bytes(image_format: str, color: str = "white") -> bytes:
@@ -53,6 +57,16 @@ def test_default_translation_timeout_covers_three_visual_qa_attempts() -> None:
     assert client.timeout == 3600
 
 
+def test_codex_image_render_mode_uses_extended_timeout() -> None:
+    client = BridgeClient(
+        "http://127.0.0.1:38473",
+        "test-token",
+        render_mode="codex-image",
+    )
+
+    assert client.timeout == CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS == 10800
+
+
 def test_translated_webp_is_restored_to_original_png_format() -> None:
     client = StubBridgeClient(_image_bytes("WEBP", "gray"))
 
@@ -88,6 +102,17 @@ def test_selected_auto_review_limit_is_sent_to_bridge() -> None:
     translate_payload = client.requests[0][2]
     assert translate_payload is not None
     assert translate_payload["metadata"]["maxAutoQaAttempts"] == 5
+
+
+def test_codex_image_render_mode_is_sent_to_bridge() -> None:
+    client = StubBridgeClient(_image_bytes("WEBP", "gray"))
+    client.render_mode = "codex-image"
+
+    client.translate_image(_image_bytes("PNG"), ".png", "pages/001.png", 1)
+
+    translate_payload = client.requests[0][2]
+    assert translate_payload is not None
+    assert translate_payload["metadata"]["renderMode"] == "codex-image"
 
 
 def test_no_regions_keeps_original_bytes() -> None:
