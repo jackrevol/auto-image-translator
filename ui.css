@@ -180,6 +180,20 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(80, 111, 225, 0.13);
 }
 
+form .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+}
+
+form .checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  accent-color: #506fe1;
+}
+
 .secret-row { display: flex; gap: 8px; }
 
 .field-button {

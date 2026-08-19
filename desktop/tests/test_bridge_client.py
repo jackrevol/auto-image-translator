@@ -105,6 +105,22 @@ def test_selected_auto_review_limit_is_sent_to_bridge() -> None:
     assert translate_payload["metadata"]["maxAutoQaAttempts"] == 5
 
 
+def test_visual_qa_skip_setting_is_sent_to_bridge_but_manual_review_overrides_it() -> None:
+    client = StubBridgeClient(_image_bytes("WEBP", "gray"))
+    client.skip_visual_qa = True
+
+    client.translate_image(_image_bytes("PNG"), ".png", "pages/001.png", 1)
+    automatic_payload = client.requests[0][2]
+    assert automatic_payload is not None
+    assert automatic_payload["metadata"]["skipVisualQa"] is True
+
+    client.requests.clear()
+    client.translate_image(_image_bytes("PNG"), ".png", "pages/001.png", 1, manual_review=True)
+    manual_payload = client.requests[0][2]
+    assert manual_payload is not None
+    assert manual_payload["metadata"]["skipVisualQa"] is False
+
+
 def test_codex_image_render_mode_is_sent_to_bridge() -> None:
     client = StubBridgeClient(_image_bytes("WEBP", "gray"))
     client.render_mode = "codex-image"

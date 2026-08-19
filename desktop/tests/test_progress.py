@@ -17,15 +17,24 @@ def test_zip_codex_log_is_mapped_to_image_stage() -> None:
 
 
 def test_quality_pass_logs_are_mapped_to_detailed_stages() -> None:
-    translation = parse_bridge_progress(
-        "[14:03:25] [작업 #7 · 이미지 #23] 번역·문맥 교정 3/4 진행 중 · 20초 경과"
+    integrated = parse_bridge_progress(
+        "[14:03:25] [작업 #7 · 이미지 #23] 누락·좌표·번역 통합 검수 2/3 진행 중 · 20초 경과"
     )
     visual = parse_bridge_progress(
-        "[14:04:11] [작업 #7 · 이미지 #23] 합성 결과 검수 4/4 시작 · 첨부 자료 5개"
+        "[14:04:11] [작업 #7 · 이미지 #23] 합성 결과 시각 검수 3/3 시작 · 첨부 자료 5개"
     )
 
-    assert translation is not None and translation.stage == "3/4 번역 교정"
-    assert visual is not None and visual.stage == "4/4 시각 검수"
+    assert integrated is not None and integrated.stage == "2/3 통합 검수"
+    assert visual is not None and visual.stage == "3/3 시각 검수"
+
+
+def test_visual_qa_skip_log_is_mapped_explicitly() -> None:
+    progress = parse_bridge_progress(
+        "[14:04:11] [작업 #7 · 이미지 #23] 시각 검수 생략 · 사용자 설정에 따라 최종 렌더로 바로 진행"
+    )
+
+    assert progress is not None
+    assert progress.stage == "검수 생략"
 
 
 def test_bright_sfx_detail_logs_are_mapped() -> None:

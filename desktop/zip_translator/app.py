@@ -88,6 +88,7 @@ class TranslatorApp:
         self.parallel_lock = threading.Lock()
         self.parallel_limit = 3
         self.quality_attempt_limit = 3
+        self.skip_visual_qa = False
         self.render_mode = "local"
         self.queued_review_images: dict[int, str] = {}
         self.preview_dir = Path(tempfile.mkdtemp(prefix="jit-result-preview-"))
@@ -103,6 +104,7 @@ class TranslatorApp:
         self.bridge_status_var = tk.StringVar(value="통합 브리지 시작 중...")
         self.parallel_var = tk.StringVar(value="3")
         self.quality_attempt_var = tk.StringVar(value="3")
+        self.skip_visual_qa_var = tk.BooleanVar(value=False)
         self.render_mode_var = tk.StringVar(value="로컬 정밀 렌더")
         self.status_var = tk.StringVar(value="ZIP 파일을 끌어다 놓거나 선택하세요.")
         self.progress_var = tk.DoubleVar(value=0)
@@ -197,7 +199,14 @@ class TranslatorApp:
         )
         self.quality_attempt_combo.grid(row=2, column=1, sticky="w", pady=(10, 0))
         self.quality_attempt_combo.bind("<<ComboboxSelected>>", self._on_quality_attempts_changed)
-        ttk.Label(output, text="이미지 렌더 방식").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        self.skip_visual_qa_check = ttk.Checkbutton(
+            output,
+            text="합성 결과 시각 검수 생략 · 속도 우선",
+            variable=self.skip_visual_qa_var,
+            command=self._on_skip_visual_qa_changed,
+        )
+        self.skip_visual_qa_check.grid(row=3, column=1, sticky="w", pady=(10, 0))
+        ttk.Label(output, text="이미지 렌더 방식").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
         self.render_mode_combo = ttk.Combobox(
             output,
             textvariable=self.render_mode_var,
@@ -205,13 +214,13 @@ class TranslatorApp:
             state="readonly",
             width=18,
         )
-        self.render_mode_combo.grid(row=3, column=1, sticky="w", pady=(10, 0))
+        self.render_mode_combo.grid(row=4, column=1, sticky="w", pady=(10, 0))
         self.render_mode_combo.bind("<<ComboboxSelected>>", self._on_render_mode_changed)
         ttk.Label(
             output,
             text="Codex 작업 시트 렌더는 문구 크롭을 한 장에 모아 번역·식질한 뒤 원본 좌표에 재조립합니다.",
             foreground="#555555",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         image_frame = ttk.LabelFrame(outer, text="이미지별 진행 상황 · ZIP + 웹", padding=8)
         image_frame.grid(row=5, column=0, sticky="nsew", pady=(0, 12))
@@ -371,6 +380,7 @@ class TranslatorApp:
             self.bridge_url_var.get().strip(),
             self.bridge_token_var.get().strip(),
             max_auto_qa_attempts=self.quality_attempt_limit,
+            skip_visual_qa=self.skip_visual_qa_var.get(),
             render_mode=(
                 "codex-image" if self.render_mode_var.get() == "Codex 대사 작업 시트 렌더" else "local"
             ),
@@ -390,6 +400,7 @@ class TranslatorApp:
             return
         self._set_parallel_limit(int(self.parallel_var.get()))
         self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
+        self.skip_visual_qa = self.skip_visual_qa_var.get()
         self.render_mode = (
             "codex-image" if self.render_mode_var.get() == "Codex 대사 작업 시트 렌더" else "local"
         )
@@ -408,6 +419,7 @@ class TranslatorApp:
         self._clear_image_progress()
         self.start_button.configure(state="disabled")
         self.quality_attempt_combo.configure(state="disabled")
+        self.skip_visual_qa_check.configure(state="disabled")
         self.render_mode_combo.configure(state="disabled")
         self.cancel_button.configure(state="normal")
         self.cancel_all_button.configure(state="normal")
@@ -556,6 +568,7 @@ class TranslatorApp:
     def _finish_controls(self) -> None:
         self.start_button.configure(state="normal" if self.bridge_ready else "disabled")
         self.quality_attempt_combo.configure(state="readonly")
+        self.skip_visual_qa_check.configure(state="normal")
         self.render_mode_combo.configure(state="readonly")
         self.cancel_button.configure(state="disabled")
         self.cancel_all_button.configure(state="disabled")
@@ -583,6 +596,13 @@ class TranslatorApp:
     def _on_quality_attempts_changed(self, _event: tk.Event | None = None) -> None:
         self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
         self.status_var.set(f"자동 재검수 한도를 이미지당 {self.quality_attempt_limit}회로 설정했습니다.")
+
+    def _on_skip_visual_qa_changed(self) -> None:
+        self.skip_visual_qa = self.skip_visual_qa_var.get()
+        if self.skip_visual_qa:
+            self.status_var.set("합성 결과 시각 검수를 생략합니다. 완료 이미지를 직접 확인하세요.")
+        else:
+            self.status_var.set("합성 결과 시각 검수와 자동 재검수를 사용합니다.")
 
     def _on_render_mode_changed(self, _event: tk.Event | None = None) -> None:
         self.render_mode = (

@@ -5,6 +5,7 @@ const DEFAULTS = {
   minHeight: 80,
   parallelism: 3,
   maxAutoQaAttempts: 3,
+  skipVisualQa: false,
   renderMode: "local"
 };
 
@@ -15,6 +16,7 @@ const minWidthInput = document.getElementById("min-width");
 const minHeightInput = document.getElementById("min-height");
 const parallelismInput = document.getElementById("parallelism");
 const maxAutoQaAttemptsInput = document.getElementById("max-auto-qa-attempts");
+const skipVisualQaInput = document.getElementById("skip-visual-qa");
 const renderModeInput = document.getElementById("render-mode");
 const toggleTokenButton = document.getElementById("toggle-token");
 const testConnectionButton = document.getElementById("test-connection");
@@ -37,6 +39,7 @@ form.addEventListener("submit", async (event) => {
         5,
         DEFAULTS.maxAutoQaAttempts
       ),
+      skipVisualQa: skipVisualQaInput.checked,
       renderMode: renderModeInput.value === "codex-image" ? "codex-image" : "local"
     };
 
@@ -80,6 +83,7 @@ async function loadSettings() {
   minHeightInput.value = settings.minHeight;
   parallelismInput.value = settings.parallelism;
   maxAutoQaAttemptsInput.value = settings.maxAutoQaAttempts;
+  skipVisualQaInput.checked = settings.skipVisualQa === true;
   renderModeInput.value = settings.renderMode === "codex-image" ? "codex-image" : "local";
 }
 

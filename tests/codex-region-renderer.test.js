@@ -10,7 +10,8 @@ const {
   planRegionCrops,
   renderRegionCrops,
   renderRegionAtlases,
-  layoutCropAtlas
+  layoutCropAtlas,
+  createRegionRenderSignature
 } = require("../bridge/codex-region-renderer.js");
 
 function region(box, translated) {
@@ -119,4 +120,68 @@ test("여러 대사 크롭을 한 작업 시트로 결합하고 다시 분할한
   assert.equal(result.atlasCount, 1);
   const metadata = await sharp(result.buffer).metadata();
   assert.deepEqual([metadata.width, metadata.height], [320, 180]);
+});
+
+test("변경 없는 작업 시트는 캐시하고 동일 영역의 중복 렌더를 생략한다", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-region-cache-"));
+  const source = path.join(directory, "source.png");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  await sharp({ create: { width: 320, height: 180, channels: 3, background: "white" } }).png().toFile(source);
+  const regions = [
+    region([40, 100, 220, 800], "왼쪽"),
+    region([780, 100, 960, 800], "오른쪽")
+  ];
+  const renderCache = new Map();
+  let atlasCalls = 0;
+  const renderAtlas = async ({ input }) => {
+    atlasCalls += 1;
+    return input;
+  };
+
+  await renderRegionAtlases({ imagePath: source, regions, renderAtlas, renderCache });
+  const phases = [];
+  await renderRegionAtlases({
+    imagePath: source,
+    regions,
+    renderAtlas,
+    renderCache,
+    onProgress: ({ phase }) => phases.push(phase)
+  });
+
+  assert.equal(atlasCalls, 1);
+  assert.ok(phases.includes("cache"));
+});
+
+test("영역 렌더 서명은 객체 키 순서와 무관하고 실제 변경은 구분한다", () => {
+  const first = [{ original: "原文", translated: "번역", box: [1, 2, 3, 4] }];
+  const reordered = [{ box: [1, 2, 3, 4], translated: "번역", original: "原文" }];
+  const changed = [{ box: [1, 2, 3, 4], translated: "수정", original: "原文" }];
+
+  assert.equal(createRegionRenderSignature(first), createRegionRenderSignature(reordered));
+  assert.notEqual(createRegionRenderSignature(first), createRegionRenderSignature(changed));
+});
+
+test("미통과 결과를 그대로 다시 만들 때는 작업 시트 캐시를 우회한다", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-region-cache-bypass-"));
+  const source = path.join(directory, "source.png");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  await sharp({ create: { width: 200, height: 100, channels: 3, background: "white" } }).png().toFile(source);
+  const regions = [region([200, 100, 800, 900], "다시 렌더")];
+  const renderCache = new Map();
+  let atlasCalls = 0;
+  const renderAtlas = async ({ input }) => {
+    atlasCalls += 1;
+    return input;
+  };
+
+  await renderRegionAtlases({ imagePath: source, regions, renderAtlas, renderCache });
+  await renderRegionAtlases({
+    imagePath: source,
+    regions,
+    renderAtlas,
+    renderCache,
+    bypassRenderCache: true
+  });
+
+  assert.equal(atlasCalls, 2);
 });
