@@ -62,6 +62,7 @@ def _classify_message(message: str) -> tuple[str, str, bool]:
         ("사용자 스킵 완료", "스킵 완료", "skipped", True),
         ("사용자 스킵 요청", "스킵 요청", "skipped", False),
         ("오류 ·", "오류", "error", True),
+        ("Codex 오류 상세", "Codex 오류 상세", "error", True),
         ("요청 수신", "요청 수신", "running", False),
         ("대기열 진입", "대기열", "waiting", False),
         ("병렬 처리 시작", "처리 시작", "running", False),
