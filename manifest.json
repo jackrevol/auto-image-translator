@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "이미지 한글 번역기",
   "short_name": "이미지 번역",
-  "version": "2.8.4",
+  "version": "2.8.5",
   "description": "현재 페이지 이미지의 일본어를 읽고 원래 크기에 맞춰 한국어로 덮어씁니다.",
   "permissions": [
     "activeTab",

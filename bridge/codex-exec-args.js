@@ -28,6 +28,7 @@ function buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }) {
     "--skip-git-repo-check",
     "--ignore-rules",
     "--color", "never",
+    "--json",
     "-C", tempDir,
     "--image", imagePath,
     "--output-last-message", outputPath,

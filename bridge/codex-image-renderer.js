@@ -63,8 +63,8 @@ function buildCodexEndToEndPrompt(options = {}) {
 }
 
 function resolveGeneratedImagePath(message, generatedRoot = defaultGeneratedRoot()) {
-  const paths = String(message || "").match(/[A-Za-z]:\\[^\r\n`"<>|]+?\.(?:png|jpe?g|webp)/gi) || [];
-  if (paths.length === 0) throw new Error("Codex 이미지 생성 결과 경로를 찾지 못했습니다.");
+  const paths = extractGeneratedImagePaths(message);
+  if (paths.length === 0) throw new Error("Codex 이미지 생성 응답과 실행 이벤트에서 결과 경로를 찾지 못했습니다.");
   const root = fs.realpathSync.native(generatedRoot);
   const rootPrefix = `${root}${path.sep}`.toLowerCase();
   for (const candidate of paths.reverse()) {
@@ -75,6 +75,47 @@ function resolveGeneratedImagePath(message, generatedRoot = defaultGeneratedRoot
     return resolved;
   }
   throw new Error("Codex 이미지 결과가 안전한 생성 폴더에 없습니다.");
+}
+
+function extractGeneratedImagePaths(message) {
+  const source = String(message || "");
+  const textCandidates = [source];
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) continue;
+    try {
+      collectJsonStrings(JSON.parse(trimmed), textCandidates);
+    } catch {
+      // JSONL이 아닌 일반 로그 줄은 원문 정규식 검색으로 처리한다.
+    }
+  }
+
+  const found = [];
+  const seen = new Set();
+  for (const text of textCandidates) {
+    const normalized = String(text).replace(/\\\\/g, "\\");
+    const matches = normalized.match(/[A-Za-z]:[\\/][^\r\n`"<>|]+?\.(?:png|jpe?g|webp)/gi) || [];
+    for (const candidate of matches) {
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(candidate);
+    }
+  }
+  return found;
+}
+
+function collectJsonStrings(value, output) {
+  if (typeof value === "string") {
+    output.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectJsonStrings(item, output));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  Object.values(value).forEach((item) => collectJsonStrings(item, output));
 }
 
 async function normalizeGeneratedImage(generatedPath, sourcePath) {
@@ -116,6 +157,7 @@ function formatBox(value) {
 module.exports = {
   buildCodexImageRenderPrompt,
   buildCodexEndToEndPrompt,
+  extractGeneratedImagePaths,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage,
