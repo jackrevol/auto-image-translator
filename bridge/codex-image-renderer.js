@@ -35,6 +35,33 @@ function buildCodexImageRenderPrompt(regions, options = {}) {
   ].filter(Boolean).join("\n");
 }
 
+function buildCodexEndToEndPrompt(options = {}) {
+  const attempt = Math.max(1, Number(options.attempt) || 1);
+  const issues = Array.isArray(options.issues) ? options.issues.filter(Boolean) : [];
+  const issueBlock = issues.length
+    ? `\n이전 독립 검수에서 발견된 문제를 반드시 바로잡아라:\n${issues.map((issue) => `- ${singleLine(issue)}`).join("\n")}`
+    : "";
+
+  return [
+    "내장 image_gen 도구를 사용해 첫 번째 첨부 이미지를 직접 편집하라.",
+    "Use case: text-localization.",
+    `Codex 통합 번역·렌더 ${attempt}회차다.`,
+    "이 작업에서는 별도의 OCR 좌표나 번역문이 제공되지 않는다. 네가 원본 전체를 직접 정밀 판독하고, 번역하고, 원문을 제거하고, 한국어를 식자하고, 결과를 자체 검수하라.",
+    "이미지 전체를 확대해 일본어 대사, 독백, 설명, 간판·라벨, 작은 글자, 세로 글자, 검은 배경의 흰 글자와 효과음을 빠짐없이 찾으라.",
+    "각 문구의 탁점·반탁점·작은 가나·장음·말줄임표를 확인하고 장면 문맥, 화자의 말투와 감정을 보존해 자연스럽고 간결한 한국어로 번역하라.",
+    "효과음은 설명문으로 풀지 말고 원문의 소리와 강도를 살린 짧은 한국어 의성어·의태어로 옮겨라.",
+    "일본어 원문은 잔상이나 한국어와의 겹침 없이 섬세하게 제거하고 뒤의 말풍선, 선화, 망점과 배경을 자연스럽게 복원하라.",
+    "한국어는 원문의 위치, 크기, 굵기, 색상, 외곽선, 회전, 정렬과 시각적 효과를 최대한 유지해 원래 영역 안에 배치하라.",
+    "원본의 인물, 얼굴, 신체, 의상, 배경, 패널선, 말풍선 테두리, 효과선, 망점, 색상, 명암, 구도와 그림체는 픽셀 수준으로 최대한 보존하라.",
+    "일본어가 없는 영역은 수정하지 말고 장면을 새로 그리거나 인물의 형태·표정·자세를 바꾸지 마라.",
+    "이미지에 일본어 문구가 전혀 없다면 원본을 변경하지 않은 결과를 만들어라.",
+    "완성 전에 원본과 결과를 다시 비교해 누락된 일본어, 원문 잔상, 오역, 잘린 한국어, 그림 손상을 스스로 수정하라.",
+    "이미지 안에 설명, 워터마크 또는 원본에 없던 추가 문구를 만들지 마라.",
+    issueBlock,
+    "편집이 끝나면 생성된 이미지의 로컬 절대 경로만 최종 답변 한 줄로 반환하라. Markdown이나 다른 설명을 쓰지 마라."
+  ].filter(Boolean).join("\n");
+}
+
 function resolveGeneratedImagePath(message, generatedRoot = defaultGeneratedRoot()) {
   const paths = String(message || "").match(/[A-Za-z]:\\[^\r\n`"<>|]+?\.(?:png|jpe?g|webp)/gi) || [];
   if (paths.length === 0) throw new Error("Codex 이미지 생성 결과 경로를 찾지 못했습니다.");
@@ -88,6 +115,7 @@ function formatBox(value) {
 
 module.exports = {
   buildCodexImageRenderPrompt,
+  buildCodexEndToEndPrompt,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage,

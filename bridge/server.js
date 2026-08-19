@@ -25,6 +25,7 @@ const { removeTranslatorTempDir } = require("./temp-cleanup.js");
 const { buildCodexExecArgs, buildCodexImageRenderArgs } = require("./codex-exec-args.js");
 const {
   buildCodexImageRenderPrompt,
+  buildCodexEndToEndPrompt,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage
@@ -307,6 +308,17 @@ async function translateImage(image, metadata, requestId, control) {
   logProgress(requestId, imageIndex, `렌더 모드 · ${renderMode === "codex-image" ? "Codex 전체 위임" : "로컬 정밀 렌더"}`);
 
   try {
+    if (renderMode === "codex-image") {
+      return await translateImageFullyWithCodex({
+        imagePath,
+        tempDir,
+        requestId,
+        imageIndex,
+        metadata,
+        control
+      });
+    }
+
     let ocrReference = null;
     let isolatedTextReference = null;
     let lightTextReference = null;
@@ -430,26 +442,13 @@ async function translateImage(image, metadata, requestId, control) {
       : normalizeQaAttempts(metadata?.maxAutoQaAttempts);
     let visualReview = null;
     let completedQaAttempts = 0;
-    let latestPreviewBuffer = null;
     for (let attempt = 1; attempt <= maximumQaAttempts; attempt += 1) {
       assertTranslationActive(control);
       const previewPath = path.join(tempDir, `quality-preview-${attempt}.webp`);
       const visualQaPath = path.join(tempDir, `visual-qa-${attempt}.json`);
       const modeLabel = manualReview ? "사용자 추가 검수" : `자동 검수 ${attempt}/${maximumQaAttempts}`;
       logProgress(requestId, imageIndex, `${modeLabel} · 교정본 합성 시작`);
-      const previewBuffer = renderMode === "codex-image"
-        ? await renderTranslatedImageWithCodex({
-            requestId,
-            imageIndex,
-            tempDir,
-            imagePath,
-            regions: result.regions,
-            attempt,
-            issues: visualReview?.issues,
-            control
-          })
-        : await renderTranslatedImage(imagePath, result.regions);
-      latestPreviewBuffer = previewBuffer;
+      const previewBuffer = await renderTranslatedImage(imagePath, result.regions);
       fs.writeFileSync(previewPath, previewBuffer);
       logProgress(requestId, imageIndex, `${modeLabel} · 검수용 WebP 준비 완료 · ${formatBytes(previewBuffer.length)}`);
 
@@ -529,28 +528,8 @@ async function translateImage(image, metadata, requestId, control) {
       return { ...result, qualityReview, editedImage: null };
     }
     assertTranslationActive(control);
-    let editedBuffer;
-    if (renderMode === "codex-image") {
-      if (visualReview?.passed === true && latestPreviewBuffer) {
-        editedBuffer = latestPreviewBuffer;
-        logProgress(requestId, imageIndex, "검수 통과한 Codex 렌더 결과를 최종 이미지로 확정");
-      } else {
-        logProgress(requestId, imageIndex, "최종 교정안을 Codex 이미지 렌더에 다시 위임");
-        editedBuffer = await renderTranslatedImageWithCodex({
-          requestId,
-          imageIndex,
-          tempDir,
-          imagePath,
-          regions: result.regions,
-          attempt: completedQaAttempts + 1,
-          issues: visualReview?.issues,
-          control
-        });
-      }
-    } else {
-      logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
-      editedBuffer = await renderTranslatedImage(imagePath, result.regions);
-    }
+    logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
+    const editedBuffer = await renderTranslatedImage(imagePath, result.regions);
     logProgress(requestId, imageIndex, `교체용 WebP 생성 완료 · ${formatBytes(editedBuffer.length)}`);
     return {
       ...result,
@@ -565,6 +544,114 @@ async function translateImage(image, metadata, requestId, control) {
   }
 }
 
+async function translateImageFullyWithCodex({ imagePath, tempDir, requestId, imageIndex, metadata, control }) {
+  const manualReview = metadata?.qualityReviewMode === "manual";
+  const maximumQaAttempts = manualReview
+    ? 1
+    : normalizeQaAttempts(metadata?.maxAutoQaAttempts);
+  let result = { regions: [] };
+  let visualReview = null;
+  let latestPreviewBuffer = null;
+  let completedQaAttempts = 0;
+
+  logProgress(
+    requestId,
+    imageIndex,
+    "Codex 통합 처리 · 별도 OCR·좌표 검수·번역 교정을 생략하고 원본에서 완성 이미지까지 한 번에 처리"
+  );
+
+  for (let attempt = 1; attempt <= maximumQaAttempts; attempt += 1) {
+    assertTranslationActive(control);
+    const modeLabel = manualReview ? "사용자 추가 검수" : `자동 검수 ${attempt}/${maximumQaAttempts}`;
+    const previewPath = path.join(tempDir, `codex-integrated-preview-${attempt}.webp`);
+    const visualQaPath = path.join(tempDir, `codex-integrated-qa-${attempt}.json`);
+    const hasCorrectionRegions = result.regions.length > 0;
+
+    latestPreviewBuffer = await renderTranslatedImageWithCodex({
+      requestId,
+      imageIndex,
+      tempDir,
+      imagePath,
+      regions: result.regions,
+      attempt,
+      issues: visualReview?.issues,
+      fullDelegation: attempt === 1 || !hasCorrectionRegions,
+      control
+    });
+    fs.writeFileSync(previewPath, latestPreviewBuffer);
+    logProgress(requestId, imageIndex, `${modeLabel} · 통합 결과 독립 검수 시작 · ${formatBytes(latestPreviewBuffer.length)}`);
+
+    const fallbackReview = {
+      passed: false,
+      summary: "Codex 통합 결과 독립 검수 호출 실패",
+      issues: ["검수 결과를 받지 못해 사용자 확인이 필요함"],
+      regions: result.regions
+    };
+    visualReview = await runOptionalQualityPass({
+      requestId,
+      imageIndex,
+      tempDir,
+      label: `${modeLabel} · Codex 통합 결과 독립 검수`,
+      prompt: buildVisualQaPrompt(result, {
+        attempt,
+        maximum: maximumQaAttempts,
+        manualReview
+      }),
+      images: [imagePath, previewPath],
+      outputPath: visualQaPath,
+      schemaPath: VISUAL_QA_SCHEMA_PATH,
+      fallback: fallbackReview,
+      control
+    });
+    completedQaAttempts = attempt;
+    result = { ...result, regions: selectReliableRegions(visualReview.regions).accepted };
+
+    if (visualReview.passed) {
+      logProgress(requestId, imageIndex, `${modeLabel} 통과 · ${singleLine(visualReview.summary)}`);
+      break;
+    }
+
+    const issueSummary = visualReview.issues.length
+      ? visualReview.issues.slice(0, 3).map(singleLine).join(" / ")
+      : singleLine(visualReview.summary);
+    if (attempt < maximumQaAttempts) {
+      logProgress(requestId, imageIndex, `${modeLabel} 미통과 · 검수 교정안으로 Codex 재처리 · ${issueSummary}`);
+    } else {
+      logProgress(requestId, imageIndex, `${modeLabel} 미통과 · 자동 반복 종료 · ${issueSummary}`);
+    }
+  }
+
+  const qualityReview = {
+    passed: visualReview?.passed === true,
+    attempts: completedQaAttempts,
+    mode: manualReview ? "manual" : "automatic",
+    requiresUserReview: visualReview?.passed !== true,
+    summary: String(visualReview?.summary || "검수 결과 없음"),
+    issues: Array.isArray(visualReview?.issues) ? visualReview.issues : []
+  };
+  if (qualityReview.requiresUserReview) {
+    const message = manualReview
+      ? "사용자 추가 검수 미통과 · 현재 결과를 확인한 뒤 필요하면 다시 검수하세요"
+      : `자동 검수 ${completedQaAttempts}회 미통과 · 사용자 검수 필요`;
+    logProgress(requestId, imageIndex, message);
+  }
+  if (!latestPreviewBuffer) throw new Error("Codex 통합 렌더 결과가 없습니다.");
+
+  logProgress(
+    requestId,
+    imageIndex,
+    `Codex 통합 교체용 WebP 확정 · 독립 검수 ${completedQaAttempts}회 · ${formatBytes(latestPreviewBuffer.length)}`
+  );
+  return {
+    ...result,
+    qualityReview,
+    editedImage: {
+      mimeType: "image/webp",
+      data: latestPreviewBuffer.toString("base64")
+    }
+  };
+}
+
 async function renderTranslatedImageWithCodex({
   requestId,
   imageIndex,
@@ -573,21 +660,25 @@ async function renderTranslatedImageWithCodex({
   regions,
   attempt,
   issues,
+  fullDelegation = false,
   control
 }) {
   assertTranslationActive(control);
   const outputPath = path.join(tempDir, `codex-image-render-${attempt}.txt`);
   if (fs.existsSync(outputPath)) fs.rmSync(outputPath, { force: true });
   const startedAt = Date.now();
-  logProgress(requestId, imageIndex, `Codex 이미지 렌더 ${attempt}회차 시작 · 원문 제거·한국어 식질 전체 위임`);
+  const taskLabel = fullDelegation ? "Codex 통합 번역·렌더" : "Codex 이미지 렌더";
+  logProgress(requestId, imageIndex, `${taskLabel} ${attempt}회차 시작 · ${fullDelegation ? "판독·번역·원문 제거·한국어 식질 전체 위임" : "원문 제거·한국어 식질 위임"}`);
   const heartbeat = setInterval(() => {
-    logProgress(requestId, imageIndex, `Codex 이미지 렌더 ${attempt}회차 진행 중 · ${formatDuration(Date.now() - startedAt)} 경과`);
+    logProgress(requestId, imageIndex, `${taskLabel} ${attempt}회차 진행 중 · ${formatDuration(Date.now() - startedAt)} 경과`);
   }, 10_000);
   let generatedPath = null;
   try {
     await runCodex(
       buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }),
-      buildCodexImageRenderPrompt(regions, { attempt, issues }),
+      fullDelegation
+        ? buildCodexEndToEndPrompt({ attempt, issues })
+        : buildCodexImageRenderPrompt(regions, { attempt, issues }),
       15 * 60 * 1000,
       control
     );
@@ -598,7 +689,7 @@ async function renderTranslatedImageWithCodex({
     logProgress(
       requestId,
       imageIndex,
-      `Codex 이미지 렌더 ${attempt}회차 완료 · 원본 크기로 정규화 · ${formatBytes(buffer.length)} · ${formatDuration(Date.now() - startedAt)}`
+      `${taskLabel} ${attempt}회차 완료 · 원본 크기로 정규화 · ${formatBytes(buffer.length)} · ${formatDuration(Date.now() - startedAt)}`
     );
     return buffer;
   } finally {
