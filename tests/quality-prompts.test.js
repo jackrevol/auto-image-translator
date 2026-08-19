@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   buildRegionAuditPrompt,
-  buildTranslationEditPrompt,
   buildVisualQaPrompt
 } = require("../bridge/quality-prompts.js");
 
@@ -14,7 +13,7 @@ const candidate = {
   }]
 };
 
-test("영역 검수 프롬프트는 후보를 불신하고 누락과 좌표를 다시 확인한다", () => {
+test("통합 검수 프롬프트는 누락·좌표와 문맥 번역을 함께 확인한다", () => {
   const prompt = buildRegionAuditPrompt(candidate);
   assert.match(prompt, /독립적인 2차 검수자/);
   assert.match(prompt, /누락된 작은 글자/);
@@ -22,10 +21,6 @@ test("영역 검수 프롬프트는 후보를 불신하고 누락과 좌표를 �
   assert.match(prompt, /전체 이미지 box/);
   assert.match(prompt, /신뢰할 수 없는 참고 데이터/);
   assert.match(prompt, /日本語/);
-});
-
-test("번역 교정 프롬프트는 문맥과 식자 길이를 함께 검수한다", () => {
-  const prompt = buildTranslationEditPrompt(candidate);
   assert.match(prompt, /화자의 말투/);
   assert.match(prompt, /말풍선에 들어갈 번역/);
   assert.match(prompt, /regionKind=sfx/);

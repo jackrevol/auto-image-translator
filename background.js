@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS = {
   minHeight: 80,
   parallelism: 3,
   maxAutoQaAttempts: 3,
+  skipVisualQa: false,
   renderMode: "local"
 };
 const CONTEXT_MENU_ID = "translate-single-image";
@@ -212,7 +213,7 @@ async function analyzeImage(image, metadata = {}) {
     throw new Error("이미지 데이터가 너무 큽니다.");
   }
 
-  const { bridgeUrl, bridgeToken, maxAutoQaAttempts, renderMode } = await chrome.storage.local.get(DEFAULT_SETTINGS);
+  const { bridgeUrl, bridgeToken, maxAutoQaAttempts, skipVisualQa, renderMode } = await chrome.storage.local.get(DEFAULT_SETTINGS);
   if (!bridgeToken?.trim()) throw new Error("로컬 브리지 연결 토큰이 설정되지 않았습니다.");
   const safeBridgeUrl = normalizeBridgeUrl(bridgeUrl);
 
@@ -236,6 +237,7 @@ async function analyzeImage(image, metadata = {}) {
           metadata: {
             ...metadata,
             maxAutoQaAttempts: Math.min(5, Math.max(1, Number(maxAutoQaAttempts) || 3)),
+            skipVisualQa: skipVisualQa === true,
             renderMode: renderMode === "codex-image" ? "codex-image" : "local"
           }
         })

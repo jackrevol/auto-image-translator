@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("node:crypto");
 const sharp = require("sharp");
 
 function planRegionCrops(regions, imageWidth, imageHeight) {
@@ -115,7 +116,15 @@ async function renderRegionCrops({ imagePath, regions, renderCrop, onProgress = 
   };
 }
 
-async function renderRegionAtlases({ imagePath, regions, renderAtlas, onProgress = null, maximumTiles = 4 }) {
+async function renderRegionAtlases({
+  imagePath,
+  regions,
+  renderAtlas,
+  onProgress = null,
+  maximumTiles = 4,
+  renderCache = null,
+  bypassRenderCache = false
+}) {
   if (typeof renderAtlas !== "function") throw new TypeError("renderAtlas 콜백이 필요합니다.");
   let working = await sharp(imagePath).autoOrient().png().toBuffer();
   const metadata = await sharp(working).metadata();
@@ -129,20 +138,34 @@ async function renderRegionAtlases({ imagePath, regions, renderAtlas, onProgress
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
     const batch = batches[batchIndex];
     const atlas = await createCropAtlas(working, batch);
-    if (onProgress) onProgress({
-      phase: "atlas",
-      index: batchIndex + 1,
-      total: batches.length,
-      cropCount: batch.length,
-      atlas
-    });
-    const rendered = await renderAtlas({
-      input: atlas.buffer,
-      regions: atlas.regions,
-      tiles: atlas.tiles,
-      index: batchIndex + 1,
-      total: batches.length
-    });
+    const cacheKey = createAtlasRenderCacheKey(atlas.buffer, atlas.regions);
+    let rendered;
+    if (!bypassRenderCache && renderCache?.has(cacheKey)) {
+      rendered = renderCache.get(cacheKey);
+      if (onProgress) onProgress({
+        phase: "cache",
+        index: batchIndex + 1,
+        total: batches.length,
+        cropCount: batch.length,
+        atlas
+      });
+    } else {
+      if (onProgress) onProgress({
+        phase: "atlas",
+        index: batchIndex + 1,
+        total: batches.length,
+        cropCount: batch.length,
+        atlas
+      });
+      rendered = await renderAtlas({
+        input: atlas.buffer,
+        regions: atlas.regions,
+        tiles: atlas.tiles,
+        index: batchIndex + 1,
+        total: batches.length
+      });
+      renderCache?.set(cacheKey, rendered);
+    }
     const normalizedAtlas = await sharp(rendered)
       .autoOrient()
       .resize(atlas.width, atlas.height, { fit: "fill" })
@@ -175,6 +198,28 @@ async function renderRegionAtlases({ imagePath, regions, renderAtlas, onProgress
     cropCount: crops.length,
     atlasCount: batches.length
   };
+}
+
+function createRegionRenderSignature(regions) {
+  return crypto
+    .createHash("sha256")
+    .update(stableSerialize(Array.isArray(regions) ? regions : []), "utf8")
+    .digest("hex");
+}
+
+function createAtlasRenderCacheKey(input, regions) {
+  const hash = crypto.createHash("sha256");
+  hash.update(input);
+  hash.update(createRegionRenderSignature(regions), "utf8");
+  return hash.digest("hex");
+}
+
+function stableSerialize(value) {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 async function createCropAtlas(working, crops) {
@@ -364,6 +409,8 @@ module.exports = {
   planRegionCrops,
   renderRegionCrops,
   renderRegionAtlases,
+  createRegionRenderSignature,
+  createAtlasRenderCacheKey,
   layoutCropAtlas,
   remapRegionToCrop
 };

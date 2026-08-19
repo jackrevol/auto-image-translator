@@ -55,6 +55,7 @@ class BridgeClient:
         timeout: int = TRANSLATION_TIMEOUT_SECONDS,
         max_auto_qa_attempts: int = 3,
         render_mode: str = "local",
+        skip_visual_qa: bool = False,
     ) -> None:
         self.url = url.rstrip("/")
         self.token = token.strip()
@@ -65,6 +66,7 @@ class BridgeClient:
             CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS if self.render_mode == "codex-image" else 30,
         )
         self.max_auto_qa_attempts = max(1, min(5, int(max_auto_qa_attempts)))
+        self.skip_visual_qa = bool(skip_visual_qa)
         if not self.url.startswith(("http://127.0.0.1:", "http://localhost:")):
             raise ValueError("브리지 주소는 이 PC의 127.0.0.1 또는 localhost만 사용할 수 있습니다.")
         if not self.token:
@@ -112,6 +114,7 @@ class BridgeClient:
                 "archiveName": name,
                 "qualityReviewMode": "manual" if manual_review else "automatic",
                 "maxAutoQaAttempts": 1 if manual_review else self.max_auto_qa_attempts,
+                "skipVisualQa": False if manual_review else self.skip_visual_qa,
                 "renderMode": self.render_mode,
             },
         }

@@ -48,6 +48,12 @@
       <input id="max-auto-qa-attempts" name="maxAutoQaAttempts" type="number" min="1" max="5" step="1">
       <p class="help">이미지 합성 결과가 품질검수를 통과하지 못할 때 자동으로 재합성·재검수할 최대 횟수입니다.</p>
 
+      <label class="checkbox-row" for="skip-visual-qa">
+        <input id="skip-visual-qa" name="skipVisualQa" type="checkbox">
+        <span>합성 결과 시각 검수 생략 · 속도 우선</span>
+      </label>
+      <p class="help">OCR·번역 통합 검수는 유지하고, 합성 결과 비교와 자동 재검수만 건너뜁니다. 잔상·조판 오류를 자동으로 찾지 않으므로 직접 결과를 확인하세요.</p>
+
       <label for="render-mode">이미지 렌더 방식</label>
       <select id="render-mode" name="renderMode">
         <option value="local">로컬 정밀 렌더 · 빠름</option>

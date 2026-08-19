@@ -17,7 +17,6 @@ const {
 const { selectReliableRegions, averageConfidence } = require("./ocr-results.js");
 const {
   buildRegionAuditPrompt,
-  buildTranslationEditPrompt,
   buildVisualQaPrompt
 } = require("./quality-prompts.js");
 const { TaskSemaphore } = require("./task-semaphore.js");
@@ -29,7 +28,7 @@ const {
   isCodexImageSafetyBlocked,
   createCodexImageSafetyError
 } = require("./codex-diagnostics.js");
-const { renderRegionAtlases } = require("./codex-region-renderer.js");
+const { renderRegionAtlases, createRegionRenderSignature } = require("./codex-region-renderer.js");
 const {
   buildCodexImageRenderPrompt,
   resolveGeneratedImagePath,
@@ -316,7 +315,6 @@ async function translateImage(image, metadata, requestId, control) {
   const locatorImagePath = path.join(tempDir, "coordinate-locator.png");
   const recognitionPath = path.join(tempDir, "recognition.json");
   const auditPath = path.join(tempDir, "region-audit.json");
-  const translationPath = path.join(tempDir, "translation-edit.json");
   fs.writeFileSync(imagePath, bytes);
   logProgress(requestId, imageIndex, `원본 준비 완료 · ${path.basename(imagePath)} · ${formatBytes(bytes.length)}`);
   logProgress(requestId, imageIndex, `렌더 모드 · ${renderMode === "codex-image" ? "Codex 대사 작업 시트 렌더" : "로컬 정밀 렌더"}`);
@@ -403,7 +401,7 @@ async function translateImage(image, metadata, requestId, control) {
       requestId,
       imageIndex,
       tempDir,
-      label: "정밀 판독 1/4",
+      label: "정밀 판독·초벌 번역 1/3",
       prompt: appendPromptGuide(PROMPT, detailGuide),
       images: referenceImages,
       outputPath: recognitionPath,
@@ -413,21 +411,10 @@ async function translateImage(image, metadata, requestId, control) {
       requestId,
       imageIndex,
       tempDir,
-      label: "누락·좌표 검수 2/4",
+      label: "누락·좌표·번역 통합 검수 2/3",
       prompt: appendPromptGuide(buildRegionAuditPrompt(result), detailGuide),
       images: referenceImages,
       outputPath: auditPath,
-      fallback: result,
-      control
-    });
-    result = await runOptionalQualityPass({
-      requestId,
-      imageIndex,
-      tempDir,
-      label: "번역·문맥 교정 3/4",
-      prompt: appendPromptGuide(buildTranslationEditPrompt(result), detailGuide),
-      images: referenceImages,
-      outputPath: translationPath,
       fallback: result,
       control
     });
@@ -440,17 +427,29 @@ async function translateImage(image, metadata, requestId, control) {
     }
 
     const manualReview = metadata?.qualityReviewMode === "manual";
-    const maximumQaAttempts = manualReview
+    const skipVisualQa = !manualReview && metadata?.skipVisualQa === true;
+    const maximumQaAttempts = skipVisualQa
+      ? 0
+      : manualReview
       ? 1
       : normalizeQaAttempts(metadata?.maxAutoQaAttempts);
     let visualReview = null;
     let completedQaAttempts = 0;
+    let latestPreviewBuffer = null;
+    let latestRenderedSignature = null;
+    const atlasRenderCache = new Map();
+    if (skipVisualQa) {
+      logProgress(requestId, imageIndex, "시각 검수 생략 · 사용자 설정에 따라 최종 렌더로 바로 진행");
+    }
     for (let attempt = 1; attempt <= maximumQaAttempts; attempt += 1) {
       assertTranslationActive(control);
       const previewPath = path.join(tempDir, `quality-preview-${attempt}.webp`);
       const visualQaPath = path.join(tempDir, `visual-qa-${attempt}.json`);
       const modeLabel = manualReview ? "사용자 추가 검수" : `자동 검수 ${attempt}/${maximumQaAttempts}`;
       logProgress(requestId, imageIndex, `${modeLabel} · 교정본 합성 시작`);
+      const currentRenderSignature = createRegionRenderSignature(result.regions);
+      const bypassRenderCache = visualReview?.passed === false
+        && currentRenderSignature === latestRenderedSignature;
       const previewBuffer = await renderWithSelectedMode({
         renderMode,
         imagePath,
@@ -460,8 +459,12 @@ async function translateImage(image, metadata, requestId, control) {
         imageIndex,
         attempt,
         issues: visualReview?.issues,
+        renderCache: atlasRenderCache,
+        bypassRenderCache,
         control
       });
+      latestPreviewBuffer = previewBuffer;
+      latestRenderedSignature = currentRenderSignature;
       fs.writeFileSync(previewPath, previewBuffer);
       logProgress(requestId, imageIndex, `${modeLabel} · 검수용 WebP 준비 완료 · ${formatBytes(previewBuffer.length)}`);
 
@@ -477,7 +480,7 @@ async function translateImage(image, metadata, requestId, control) {
         requestId,
         imageIndex,
         tempDir,
-        label: `${modeLabel} · 합성 결과 시각 검수 4/4`,
+        label: `${modeLabel} · 합성 결과 시각 검수 3/3`,
         prompt: appendPromptGuide(
           buildVisualQaPrompt(result, {
             attempt,
@@ -509,11 +512,14 @@ async function translateImage(image, metadata, requestId, control) {
     }
 
     const qualityReview = {
-      passed: visualReview?.passed === true,
+      passed: skipVisualQa ? null : visualReview?.passed === true,
+      skipped: skipVisualQa,
       attempts: completedQaAttempts,
-      mode: manualReview ? "manual" : "automatic",
-      requiresUserReview: visualReview?.passed !== true,
-      summary: String(visualReview?.summary || "검수 결과 없음"),
+      mode: skipVisualQa ? "skipped" : manualReview ? "manual" : "automatic",
+      requiresUserReview: !skipVisualQa && visualReview?.passed !== true,
+      summary: skipVisualQa
+        ? "사용자 설정으로 시각 검수를 생략했습니다."
+        : String(visualReview?.summary || "검수 결과 없음"),
       issues: Array.isArray(visualReview?.issues) ? visualReview.issues : []
     };
     if (qualityReview.requiresUserReview) {
@@ -541,18 +547,31 @@ async function translateImage(image, metadata, requestId, control) {
       return { ...result, qualityReview, editedImage: null };
     }
     assertTranslationActive(control);
-    logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
-    const editedBuffer = await renderWithSelectedMode({
-      renderMode,
-      imagePath,
-      regions: result.regions,
-      tempDir,
-      requestId,
-      imageIndex,
-      attempt: completedQaAttempts + 1,
-      issues: visualReview?.issues,
-      control
-    });
+    const finalRenderSignature = createRegionRenderSignature(result.regions);
+    let editedBuffer;
+    if (
+      visualReview?.passed === true
+      && latestPreviewBuffer
+      && finalRenderSignature === latestRenderedSignature
+    ) {
+      editedBuffer = latestPreviewBuffer;
+      logProgress(requestId, imageIndex, "시각 검수 통과본을 최종 결과로 재사용 · 중복 렌더 생략");
+    } else {
+      logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
+      editedBuffer = await renderWithSelectedMode({
+        renderMode,
+        imagePath,
+        regions: result.regions,
+        tempDir,
+        requestId,
+        imageIndex,
+        attempt: completedQaAttempts + 1,
+        issues: visualReview?.issues,
+        renderCache: atlasRenderCache,
+        bypassRenderCache: finalRenderSignature === latestRenderedSignature,
+        control
+      });
+    }
     logProgress(requestId, imageIndex, `교체용 WebP 생성 완료 · ${formatBytes(editedBuffer.length)}`);
     return {
       ...result,
@@ -576,15 +595,21 @@ async function renderWithSelectedMode({
   imageIndex,
   attempt,
   issues,
+  renderCache,
+  bypassRenderCache,
   control
 }) {
   if (renderMode !== "codex-image") return renderTranslatedImage(imagePath, regions);
   const result = await renderRegionAtlases({
     imagePath,
     regions,
+    renderCache,
+    bypassRenderCache,
     onProgress: ({ phase, index, total, cropCount }) => {
       if (phase === "atlas") {
         logProgress(requestId, imageIndex, `Codex 대사 작업 시트 ${index}/${total} 준비 · 크롭 ${cropCount}개 · 번역·식질 위임`);
+      } else if (phase === "cache") {
+        logProgress(requestId, imageIndex, `Codex 대사 작업 시트 ${index}/${total} 변경 없음 · 이전 렌더 재사용`);
       } else {
         logProgress(requestId, imageIndex, `Codex 대사 작업 시트 ${index}/${total} 분할·재조립 완료 · 크롭 ${cropCount}개`);
       }
