@@ -244,7 +244,11 @@ async function analyzeImage(image, metadata = {}) {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error || `로컬 브리지 오류 (${response.status})`);
+      const summary = payload?.error || `로컬 브리지 오류 (${response.status})`;
+      const details = Array.isArray(payload?.details)
+        ? payload.details.filter(Boolean).slice(0, 12)
+        : [];
+      throw new Error([summary, ...details.map((detail) => `• ${detail}`)].join("\n"));
     }
 
     return {

@@ -24,6 +24,10 @@ const { TaskSemaphore } = require("./task-semaphore.js");
 const { removeTranslatorTempDir } = require("./temp-cleanup.js");
 const { buildCodexExecArgs, buildCodexImageRenderArgs } = require("./codex-exec-args.js");
 const {
+  createCodexExecutionError,
+  attachCodexDiagnostics
+} = require("./codex-diagnostics.js");
+const {
   buildCodexImageRenderPrompt,
   buildCodexEndToEndPrompt,
   resolveGeneratedImagePath,
@@ -182,10 +186,18 @@ const server = http.createServer(async (request, response) => {
         logProgress(requestId, imageIndex, "사용자 스킵 완료 · 원본 유지");
       } else {
         logProgress(requestId, imageIndex, `오류 · ${error.message}`);
+        const details = normalizeErrorDetails(error);
+        details.forEach((detail, index) => {
+          logProgress(requestId, imageIndex, `Codex 오류 상세 ${index + 1}/${details.length} · ${detail}`);
+        });
       }
     }
     if (!response.destroyed && !response.writableEnded) {
-      sendJson(response, error.statusCode || 500, { error: error.message || "브리지 오류가 발생했습니다." });
+      sendJson(response, error.statusCode || 500, {
+        error: error.message || "브리지 오류가 발생했습니다.",
+        errorCode: error.code || "BRIDGE_ERROR",
+        details: normalizeErrorDetails(error)
+      });
     }
   }
 });
@@ -673,17 +685,20 @@ async function renderTranslatedImageWithCodex({
     logProgress(requestId, imageIndex, `${taskLabel} ${attempt}회차 진행 중 · ${formatDuration(Date.now() - startedAt)} 경과`);
   }, 10_000);
   let generatedPath = null;
+  let executionEvents = "";
+  let finalMessage = "";
   try {
-    const executionEvents = await runCodex(
+    executionEvents = await runCodex(
       buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }),
       fullDelegation
         ? buildCodexEndToEndPrompt({ attempt, issues })
         : buildCodexImageRenderPrompt(regions, { attempt, issues }),
       15 * 60 * 1000,
-      control
+      control,
+      taskLabel
     );
     assertTranslationActive(control);
-    const finalMessage = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
+    finalMessage = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
     generatedPath = resolveGeneratedImagePath(`${finalMessage}\n${executionEvents}`);
     const buffer = await normalizeGeneratedImage(generatedPath, imagePath);
     logProgress(
@@ -692,6 +707,11 @@ async function renderTranslatedImageWithCodex({
       `${taskLabel} ${attempt}회차 완료 · 원본 크기로 정규화 · ${formatBytes(buffer.length)} · ${formatDuration(Date.now() - startedAt)}`
     );
     return buffer;
+  } catch (error) {
+    throw attachCodexDiagnostics(error, {
+      stdout: `${finalMessage}\n${executionEvents}`,
+      stage: taskLabel
+    });
   } finally {
     clearInterval(heartbeat);
     if (generatedPath) {
@@ -716,7 +736,7 @@ async function runQualityPass({ requestId, imageIndex, tempDir, label, prompt, i
       images,
       schemaPath,
       outputPath
-    }), prompt, 300_000, control);
+    }), prompt, 300_000, control, label);
   } finally {
     clearInterval(heartbeat);
   }
@@ -772,7 +792,7 @@ function singleLine(value) {
   return String(value || "사유 없음").replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
-function runCodex(args, stdinText, timeoutMs, control = null) {
+function runCodex(args, stdinText, timeoutMs, control = null, stage = "Codex 실행") {
   return new Promise((resolve, reject) => {
     try {
       assertTranslationActive(control);
@@ -790,7 +810,11 @@ function runCodex(args, stdinText, timeoutMs, control = null) {
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error("Codex 이미지 분석 시간이 초과되었습니다."));
+      const error = createCodexExecutionError({ stdout, stderr, stage });
+      error.code = "CODEX_TIMEOUT";
+      error.message = `Codex 처리 시간 초과 · ${Math.round(timeoutMs / 1000)}초 제한`;
+      error.details = [...(error.details || []), `제한 시간: ${Math.round(timeoutMs / 1000)}초`];
+      reject(error);
     }, timeoutMs);
 
     child.stdout.on("data", (chunk) => { if (stdout.length < 1_000_000) stdout += chunk.toString("utf8"); });
@@ -806,7 +830,7 @@ function runCodex(args, stdinText, timeoutMs, control = null) {
           return;
         }
       }
-      reject(new Error(`Codex 실행 실패: ${error.message}`));
+      reject(createCodexExecutionError({ stdout, stderr, spawnError: error, stage }));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
@@ -820,10 +844,18 @@ function runCodex(args, stdinText, timeoutMs, control = null) {
         }
       }
       if (code === 0) resolve(stdout);
-      else reject(new Error(`Codex 실행 오류 (${code}): ${stderr.trim() || stdout.trim()}`));
+      else reject(createCodexExecutionError({ exitCode: code, stdout, stderr, stage }));
     });
     child.stdin.end(stdinText, "utf8");
   });
+}
+
+function normalizeErrorDetails(error) {
+  if (!Array.isArray(error?.details)) return [];
+  return error.details
+    .map((detail) => singleLine(detail))
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 async function cleanupTempDirSafely(tempDir, requestId, imageIndex) {

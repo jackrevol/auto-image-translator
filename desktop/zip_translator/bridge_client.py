@@ -318,7 +318,12 @@ def _http_error_detail(error: HTTPError) -> str:
         body = error.read().decode("utf-8", errors="replace")
         parsed = json.loads(body)
         if isinstance(parsed, dict) and parsed.get("error"):
-            return str(parsed["error"])
+            summary = str(parsed["error"])
+            details = parsed.get("details")
+            if isinstance(details, list):
+                lines = [summary, *(f"• {detail}" for detail in details[:12] if detail)]
+                return "\n".join(lines)
+            return summary
         return body[-800:] or str(error.reason)
     except Exception:
         return str(error.reason)

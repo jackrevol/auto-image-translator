@@ -209,7 +209,7 @@ class TranslatorApp:
         self.render_mode_combo.bind("<<ComboboxSelected>>", self._on_render_mode_changed)
         ttk.Label(
             output,
-            text="로컬 렌더는 빠르고 안정적입니다. 전체 위임 렌더는 Codex가 원문 제거와 식질 이미지를 직접 생성해 느리고 사용량이 큽니다.",
+            text="로컬 렌더는 빠르고 안정적입니다. Codex 통합 위임은 판독·번역·원문 제거·식질을 함께 처리하며 사용량이 큽니다.",
             foreground="#555555",
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
@@ -240,6 +240,13 @@ class TranslatorApp:
             state="disabled",
         )
         self.preview_image_button.pack(side="left", padx=(8, 0))
+        self.error_detail_button = ttk.Button(
+            image_toolbar,
+            text="선택 오류 상세",
+            command=self._show_selected_error,
+            state="disabled",
+        )
+        self.error_detail_button.pack(side="left", padx=(8, 0))
         ttk.Label(
             image_toolbar,
             text="자동 3회 미통과 ZIP 이미지는 선택 후 추가 검수 · 웹 이미지는 페이지에서 우클릭",
@@ -285,7 +292,7 @@ class TranslatorApp:
         image_scrollbar.grid(row=1, column=1, sticky="ns")
         image_horizontal.grid(row=2, column=0, sticky="ew")
         self.image_tree.bind("<<TreeviewSelect>>", lambda _event: self._refresh_skip_button())
-        self.image_tree.bind("<Double-1>", lambda _event: self._show_selected_result())
+        self.image_tree.bind("<Double-1>", lambda _event: self._open_selected_image_row())
         self.image_tree.tag_configure("waiting", foreground="#666666")
         self.image_tree.tag_configure("running", foreground="#1456a0")
         self.image_tree.tag_configure("done", foreground="#18723a")
@@ -696,6 +703,40 @@ class TranslatorApp:
             for item_id in self.image_tree.selection()
         )
         self.preview_image_button.configure(state="normal" if can_preview else "disabled")
+        can_show_error = any(
+            self.image_row_meta.get(item_id, {}).get("state") == "error"
+            and bool(self.image_row_meta.get(item_id, {}).get("detail"))
+            for item_id in self.image_tree.selection()
+        )
+        self.error_detail_button.configure(state="normal" if can_show_error else "disabled")
+
+    def _open_selected_image_row(self) -> None:
+        selected = self.image_tree.selection()
+        if any(
+            Path(str(self.image_row_meta.get(item_id, {}).get("preview_path", ""))).is_file()
+            for item_id in selected
+        ):
+            self._show_selected_result()
+            return
+        self._show_selected_error()
+
+    def _show_selected_error(self) -> None:
+        selected = self.image_tree.selection()
+        error_item = next(
+            (
+                item_id for item_id in selected
+                if self.image_row_meta.get(item_id, {}).get("state") == "error"
+                and self.image_row_meta.get(item_id, {}).get("detail")
+            ),
+            None,
+        )
+        if not error_item:
+            self.status_var.set("오류가 발생한 이미지 행을 먼저 선택하세요.")
+            return
+        values = self.image_tree.item(error_item, "values")
+        name = str(values[2]) if len(values) > 2 else "이미지"
+        detail = str(self.image_row_meta[error_item]["detail"])
+        messagebox.showerror(f"{APP_NAME} · {name}", detail)
 
     def _review_selected_images(self) -> None:
         selected: list[tuple[int, str]] = []
@@ -1085,6 +1126,7 @@ class TranslatorApp:
             "source": source,
             "image_number": image_number,
             "state": state,
+            "detail": detail,
         })
         if meta.get("skip_requested") and state not in {"done", "error", "skipped"}:
             stage = "스킵 요청"

@@ -10,6 +10,7 @@ from zip_translator.bridge_client import (
     BridgeClient,
     CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS,
     TRANSLATION_TIMEOUT_SECONDS,
+    _http_error_detail,
 )
 
 
@@ -145,3 +146,21 @@ def test_cancel_all_requests_calls_bridge_endpoint() -> None:
     method, route, payload = client.requests[-1]
     assert (method, route) == ("POST", "/cancel-all")
     assert payload == {}
+
+
+def test_http_error_detail_includes_codex_diagnostics() -> None:
+    class FakeHttpError:
+        reason = "Internal Server Error"
+
+        @staticmethod
+        def read() -> bytes:
+            return (
+                b'{"error":"Codex model compatibility error",'
+                b'"details":["stage: render","prompt_cache_retention unsupported"]}'
+            )
+
+    detail = _http_error_detail(FakeHttpError())  # type: ignore[arg-type]
+
+    assert "Codex model compatibility error" in detail
+    assert "stage: render" in detail
+    assert "prompt_cache_retention unsupported" in detail
