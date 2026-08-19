@@ -86,6 +86,8 @@ test("Codex 이미지 렌더 프롬프트는 정확한 번역과 원본 보존�
   assert.match(prompt, /내장 image_gen 도구/);
   assert.match(prompt, /원문 "おはよう" → 정확한 한국어 "좋은 아침"/);
   assert.match(prompt, /일본어가 없는 영역은 수정하지 마라/);
+  assert.match(prompt, /이동·회전·기울이기·확대·축소/);
+  assert.match(prompt, /그림자, 광택, 테두리, 발광, 흐림/);
   assert.match(prompt, /로컬 절대 경로만/);
 });
 

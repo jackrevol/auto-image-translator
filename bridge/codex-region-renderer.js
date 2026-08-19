@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const sharp = require("sharp");
+const { renderTranslatedImage } = require("./image-renderer.js");
 
 function planRegionCrops(regions, imageWidth, imageHeight) {
   const width = Math.max(1, Math.round(Number(imageWidth) || 0));
@@ -130,10 +131,7 @@ async function renderRegionAtlases({
   const metadata = await sharp(working).metadata();
   if (!metadata.width || !metadata.height) throw new Error("영역 재조립용 이미지 크기를 읽지 못했습니다.");
   const crops = planRegionCrops(regions, metadata.width, metadata.height);
-  const batches = [];
-  for (let index = 0; index < crops.length; index += Math.max(1, maximumTiles)) {
-    batches.push(crops.slice(index, index + Math.max(1, maximumTiles)));
-  }
+  const batches = planAtlasBatches(crops, maximumTiles);
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
     const batch = batches[batchIndex];
@@ -173,14 +171,23 @@ async function renderRegionAtlases({
       .toBuffer();
 
     for (const tile of atlas.tiles) {
+      const originalTile = await sharp(working)
+        .extract({
+          left: tile.crop.box.left,
+          top: tile.crop.box.top,
+          width: tile.originalWidth,
+          height: tile.originalHeight
+        })
+        .png()
+        .toBuffer();
       const renderedTile = await sharp(normalizedAtlas)
         .extract({ left: tile.left, top: tile.top, width: tile.width, height: tile.height })
         .resize(tile.originalWidth, tile.originalHeight, { fit: "fill" })
         .png()
         .toBuffer();
-      const maskedTile = await maskRenderedTile(renderedTile, tile.crop);
+      const rebuiltTile = await rebuildRenderedTile(originalTile, renderedTile, tile.crop);
       working = await sharp(working)
-        .composite([{ input: maskedTile, left: tile.crop.box.left, top: tile.crop.box.top }])
+        .composite([{ input: rebuiltTile, left: tile.crop.box.left, top: tile.crop.box.top }])
         .png()
         .toBuffer();
     }
@@ -198,6 +205,24 @@ async function renderRegionAtlases({
     cropCount: crops.length,
     atlasCount: batches.length
   };
+}
+
+function planAtlasBatches(crops, maximumTiles = 4, maximumDimension = 4096) {
+  const limit = Math.max(1, Number(maximumTiles) || 1);
+  const batches = [];
+  let current = [];
+  for (const crop of crops) {
+    const candidate = [...current, crop];
+    const layout = layoutCropAtlas(candidate, maximumDimension);
+    if (current.length > 0 && (candidate.length > limit || layout.scale < 1)) {
+      batches.push(current);
+      current = [crop];
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
 
 function createRegionRenderSignature(regions) {
@@ -238,18 +263,10 @@ async function createCropAtlas(working, crops) {
       .toBuffer();
     composites.push({ input: cropBuffer, left: tile.left, top: tile.top });
   }
-  const borderSvg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}">`,
-    ...layout.tiles.map((tile) =>
-      `<rect x="${tile.left - 2}" y="${tile.top - 2}" width="${tile.width + 4}" height="${tile.height + 4}" fill="none" stroke="#555" stroke-width="4"/>`
-    ),
-    "</svg>"
-  ].join("");
-  composites.push({ input: Buffer.from(borderSvg, "utf8"), left: 0, top: 0 });
   return {
     ...layout,
     buffer: await sharp({
-      create: { width: layout.width, height: layout.height, channels: 3, background: "#d8d8d8" }
+      create: { width: layout.width, height: layout.height, channels: 3, background: "#b8b8b8" }
     }).composite(composites).png().toBuffer()
   };
 }
@@ -291,6 +308,7 @@ function layoutCropAtlas(crops, maximumDimension = 4096) {
   const atlas = { width, height, tiles };
   return {
     ...atlas,
+    scale,
     regions: tiles.flatMap((tile) => tile.crop.regions.map((region) => mapRegionToAtlas(region, tile, atlas)))
   };
 }
@@ -315,29 +333,90 @@ function mapRegionToAtlas(region, tile, atlas) {
   };
 }
 
-async function maskRenderedTile(renderedTile, crop) {
+async function rebuildRenderedTile(originalTile, renderedTile, crop) {
   const width = crop.box.right - crop.box.left;
   const height = crop.box.bottom - crop.box.top;
-  const rectangles = crop.regions.map((region) => {
-    const boxes = [region.box, region.layoutBox]
-      .filter((value) => Array.isArray(value) && value.length === 4)
-      .map((value) => normalizedBoxToPixels(value, width, height))
-      .filter(Boolean);
-    const target = unionBoxes(boxes);
-    if (!target) return "";
+  const cleanedTile = await renderTranslatedImage(originalTile, crop.regions, {
+    drawText: false,
+    outputFormat: "png"
+  });
+  const textLayer = await extractGeneratedTextLayer(cleanedTile, renderedTile, crop.regions, width, height);
+  if (!textLayer) {
+    return renderTranslatedImage(originalTile, crop.regions, { outputFormat: "png" });
+  }
+  return sharp(cleanedTile).composite([{ input: textLayer, left: 0, top: 0 }]).png().toBuffer();
+}
+
+async function extractGeneratedTextLayer(cleanedTile, renderedTile, regions, width, height) {
+  const [cleaned, generated] = await Promise.all([
+    sharp(cleanedTile).ensureAlpha().raw().toBuffer(),
+    sharp(renderedTile).ensureAlpha().raw().toBuffer()
+  ]);
+  const layer = Buffer.alloc(width * height * 4);
+  const targets = regions.map((region) => {
+    const layout = normalizedBoxToPixels(region.layoutBox || region.box, width, height);
+    if (!layout) return null;
     const fontPixels = (Number(region.fontSize) || 0) / 1000 * height;
-    const padding = Math.max(8, Math.round(fontPixels * 0.6));
-    const left = Math.max(0, target.left - padding);
-    const top = Math.max(0, target.top - padding);
-    const right = Math.min(width, target.right + padding);
-    const bottom = Math.min(height, target.bottom + padding);
-    return `<rect x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" rx="${Math.min(12, padding)}" fill="white"/>`;
-  }).join("");
-  const mask = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="black"/>${rectangles}</svg>`,
-    "utf8"
+    const padding = Math.max(2, Math.round(fontPixels * 0.12));
+    return {
+      box: {
+        left: Math.max(0, layout.left - padding),
+        top: Math.max(0, layout.top - padding),
+        right: Math.min(width, layout.right + padding),
+        bottom: Math.min(height, layout.bottom + padding)
+      },
+      textRgb: parseHexColor(region.textColor, [17, 17, 17]),
+      strokeRgb: parseHexColor(region.strokeColor, [255, 255, 255]),
+      useStroke: (Number(region.strokeWidth) || 0) > 0,
+      minimumPixels: Math.max(
+        8,
+        Math.round(
+          [...String(region.translated || "").replace(/\s+/g, "")].length
+          * Math.max(8, fontPixels * 0.35)
+        )
+      )
+    };
+  }).filter(Boolean);
+  let selectedPixels = 0;
+  for (const target of targets) {
+    for (let y = target.box.top; y < target.box.bottom; y += 1) {
+      for (let x = target.box.left; x < target.box.right; x += 1) {
+        const index = (y * width + x) * 4;
+        const generatedRgb = [generated[index], generated[index + 1], generated[index + 2]];
+        const cleanedRgb = [cleaned[index], cleaned[index + 1], cleaned[index + 2]];
+        const changed = colorDistance(generatedRgb, cleanedRgb) >= 24;
+        const textLike = colorDistance(generatedRgb, target.textRgb) <= 155;
+        const strokeLike = target.useStroke
+          && colorDistance(target.textRgb, target.strokeRgb) >= 50
+          && colorDistance(generatedRgb, target.strokeRgb) <= 105;
+        if (!changed || (!textLike && !strokeLike)) continue;
+        layer[index] = generated[index];
+        layer[index + 1] = generated[index + 1];
+        layer[index + 2] = generated[index + 2];
+        layer[index + 3] = generated[index + 3];
+        selectedPixels += 1;
+      }
+    }
+  }
+  const minimumPixels = Math.max(12, targets.reduce((sum, target) => sum + target.minimumPixels, 0));
+  return selectedPixels >= minimumPixels ? sharp(layer, { raw: { width, height, channels: 4 } }).png().toBuffer() : null;
+}
+
+function parseHexColor(value, fallback) {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return fallback;
+  return [
+    Number.parseInt(value.slice(1, 3), 16),
+    Number.parseInt(value.slice(3, 5), 16),
+    Number.parseInt(value.slice(5, 7), 16)
+  ];
+}
+
+function colorDistance(left, right) {
+  return Math.sqrt(
+    (left[0] - right[0]) ** 2
+    + (left[1] - right[1]) ** 2
+    + (left[2] - right[2]) ** 2
   );
-  return sharp(renderedTile).removeAlpha().joinChannel(mask).png().toBuffer();
 }
 
 function remapRegionToCrop(region, crop, imageWidth, imageHeight) {
@@ -411,6 +490,8 @@ module.exports = {
   renderRegionAtlases,
   createRegionRenderSignature,
   createAtlasRenderCacheKey,
+  planAtlasBatches,
+  rebuildRenderedTile,
   layoutCropAtlas,
   remapRegionToCrop
 };

@@ -2,7 +2,7 @@
 
 const sharp = require("sharp");
 
-async function renderTranslatedImage(imagePath, regions) {
+async function renderTranslatedImage(imagePath, regions, options = {}) {
   const decoded = await sharp(imagePath)
     .autoOrient()
     .ensureAlpha()
@@ -19,11 +19,16 @@ async function renderTranslatedImage(imagePath, regions) {
   }
 
   const cleaned = sharp(pixels, { raw: { width, height, channels } });
+  if (options.drawText === false) {
+    return options.outputFormat === "png"
+      ? cleaned.png().toBuffer()
+      : cleaned.webp({ lossless: true, effort: 4 }).toBuffer();
+  }
   const svg = createTextSvg(width, height, normalizedRegions);
-  return cleaned
-    .composite([{ input: Buffer.from(svg, "utf8"), top: 0, left: 0 }])
-    .webp({ lossless: true, effort: 4 })
-    .toBuffer();
+  const rendered = cleaned.composite([{ input: Buffer.from(svg, "utf8"), top: 0, left: 0 }]);
+  return options.outputFormat === "png"
+    ? rendered.png().toBuffer()
+    : rendered.webp({ lossless: true, effort: 4 }).toBuffer();
 }
 
 function normalizeRegion(region, width, height) {

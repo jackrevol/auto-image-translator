@@ -11,7 +11,9 @@ const {
   renderRegionCrops,
   renderRegionAtlases,
   layoutCropAtlas,
-  createRegionRenderSignature
+  createRegionRenderSignature,
+  planAtlasBatches,
+  rebuildRenderedTile
 } = require("../bridge/codex-region-renderer.js");
 
 function region(box, translated) {
@@ -184,4 +186,47 @@ test("미통과 결과를 그대로 다시 만들 때는 작업 시트 캐시를
   });
 
   assert.equal(atlasCalls, 2);
+});
+
+test("작업 시트가 축소될 조합은 원본 해상도를 유지하도록 더 작은 배치로 나눈다", () => {
+  const crops = Array.from({ length: 4 }, (_, index) => ({
+    index: index + 1,
+    box: { left: 0, top: 0, right: 800, bottom: 2100 },
+    regions: [region([100, 100, 900, 900], `문구 ${index + 1}`)]
+  }));
+
+  const batches = planAtlasBatches(crops, 4, 4096);
+
+  assert.equal(batches.length, 2);
+  assert.deepEqual(batches.map((batch) => batch.length), [2, 2]);
+  assert.ok(batches.every((batch) => layoutCropAtlas(batch).scale === 1));
+});
+
+test("Codex 타일의 그림자와 배경 변형은 버리고 한국어 글자 픽셀만 원본 위에 재조립한다", async () => {
+  const original = await sharp({
+    create: { width: 100, height: 80, channels: 3, background: "#ffffff" }
+  }).png().toBuffer();
+  const generated = await sharp({
+    create: { width: 100, height: 80, channels: 3, background: "#aaaaaa" }
+  }).composite([{
+    input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="80"><rect x="43" y="28" width="14" height="24" fill="#111111"/></svg>', "utf8"),
+    left: 0,
+    top: 0
+  }]).png().toBuffer();
+  const crop = {
+    box: { left: 0, top: 0, right: 100, bottom: 80 },
+    regions: [{
+      ...region([350, 250, 650, 750], "한"),
+      textColor: "#111111",
+      backgroundColor: "#ffffff",
+      strokeWidth: 0
+    }]
+  };
+
+  const rebuilt = await rebuildRenderedTile(original, generated, crop);
+  const { data, info } = await sharp(rebuilt).raw().toBuffer({ resolveWithObject: true });
+  const corner = (5 * info.width + 5) * info.channels;
+  const text = (40 * info.width + 50) * info.channels;
+  assert.deepEqual([...data.subarray(corner, corner + 3)], [255, 255, 255]);
+  assert.deepEqual([...data.subarray(text, text + 3)], [17, 17, 17]);
 });
