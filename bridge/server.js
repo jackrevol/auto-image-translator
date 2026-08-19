@@ -674,7 +674,7 @@ async function renderTranslatedImageWithCodex({
   }, 10_000);
   let generatedPath = null;
   try {
-    await runCodex(
+    const executionEvents = await runCodex(
       buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }),
       fullDelegation
         ? buildCodexEndToEndPrompt({ attempt, issues })
@@ -683,8 +683,8 @@ async function renderTranslatedImageWithCodex({
       control
     );
     assertTranslationActive(control);
-    if (!fs.existsSync(outputPath)) throw new Error("Codex 이미지 렌더 결과 메시지가 없습니다.");
-    generatedPath = resolveGeneratedImagePath(fs.readFileSync(outputPath, "utf8"));
+    const finalMessage = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
+    generatedPath = resolveGeneratedImagePath(`${finalMessage}\n${executionEvents}`);
     const buffer = await normalizeGeneratedImage(generatedPath, imagePath);
     logProgress(
       requestId,

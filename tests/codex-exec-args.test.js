@@ -30,6 +30,7 @@ test("Codex 이미지 렌더 실행은 내장 이미지 생성을 켜고 사용�
 
   assert.equal(args[0], "exec");
   assert.ok(args.includes("--ignore-user-config"));
+  assert.ok(args.includes("--json"));
   assert.deepEqual(args.slice(args.indexOf("--enable"), args.indexOf("--sandbox")), [
     "--enable",
     "image_generation"

@@ -9,10 +9,28 @@ const sharp = require("sharp");
 const {
   buildCodexImageRenderPrompt,
   buildCodexEndToEndPrompt,
+  extractGeneratedImagePaths,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage
 } = require("../bridge/codex-image-renderer.js");
+
+test("최종 답변에 경로가 없어도 해당 Codex 실행 JSON 이벤트에서 생성 경로를 복구한다", () => {
+  const events = [
+    JSON.stringify({ type: "thread.started", thread_id: "abc" }),
+    JSON.stringify({
+      type: "item.completed",
+      item: {
+        type: "tool_call",
+        output: "생성 완료: C:\\Users\\tester\\.codex\\generated_images\\session-1\\result.png"
+      }
+    })
+  ].join("\n");
+
+  assert.deepEqual(extractGeneratedImagePaths(events), [
+    "C:\\Users\\tester\\.codex\\generated_images\\session-1\\result.png"
+  ]);
+});
 
 test("Codex 통합 위임 프롬프트는 판독부터 자체 검수까지 한 번에 수행한다", () => {
   const prompt = buildCodexEndToEndPrompt({
