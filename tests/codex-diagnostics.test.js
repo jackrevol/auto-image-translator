@@ -5,7 +5,9 @@ const assert = require("node:assert/strict");
 const {
   collectCodexDiagnostics,
   createCodexExecutionError,
-  attachCodexDiagnostics
+  attachCodexDiagnostics,
+  isCodexImageSafetyBlocked,
+  createCodexImageSafetyError
 } = require("../bridge/codex-diagnostics.js");
 
 test("Codex JSON 이벤트의 모델 메시지와 도구 실패를 상세 사유로 수집한다", () => {
@@ -58,4 +60,20 @@ test("prompt_cache_retention 모델 호환성 오류에는 업데이트 안내�
   assert.equal(error.code, "CODEX_MODEL_COMPATIBILITY");
   assert.match(error.message, /모델 호환성 오류/);
   assert.match(error.details.join(" "), /codex update/);
+});
+
+test("이미지 생성 안전 필터 차단 메시지를 경로 오류와 구분한다", () => {
+  const output = JSON.stringify({
+    type: "item.completed",
+    item: {
+      type: "agent_message",
+      text: "이미지 생성 안전 필터가 원본의 성적 묘사를 감지해 첫 편집을 차단했습니다."
+    }
+  });
+
+  assert.equal(isCodexImageSafetyBlocked(output), true);
+  const error = createCodexImageSafetyError(output, "Codex 대사 영역 렌더");
+  assert.equal(error.code, "CODEX_IMAGE_SAFETY_BLOCKED");
+  assert.match(error.message, /안전 필터/);
+  assert.match(error.details.join(" "), /성적 묘사/);
 });

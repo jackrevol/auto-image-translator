@@ -201,7 +201,7 @@ class TranslatorApp:
         self.render_mode_combo = ttk.Combobox(
             output,
             textvariable=self.render_mode_var,
-            values=("로컬 정밀 렌더", "Codex 통합 위임"),
+            values=("로컬 정밀 렌더", "Codex 대사 작업 시트 렌더"),
             state="readonly",
             width=18,
         )
@@ -209,7 +209,7 @@ class TranslatorApp:
         self.render_mode_combo.bind("<<ComboboxSelected>>", self._on_render_mode_changed)
         ttk.Label(
             output,
-            text="로컬 렌더는 빠르고 안정적입니다. Codex 통합 위임은 판독·번역·원문 제거·식질을 함께 처리하며 사용량이 큽니다.",
+            text="Codex 작업 시트 렌더는 문구 크롭을 한 장에 모아 번역·식질한 뒤 원본 좌표에 재조립합니다.",
             foreground="#555555",
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
@@ -372,7 +372,7 @@ class TranslatorApp:
             self.bridge_token_var.get().strip(),
             max_auto_qa_attempts=self.quality_attempt_limit,
             render_mode=(
-                "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
+                "codex-image" if self.render_mode_var.get() == "Codex 대사 작업 시트 렌더" else "local"
             ),
         )
 
@@ -391,7 +391,7 @@ class TranslatorApp:
         self._set_parallel_limit(int(self.parallel_var.get()))
         self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
         self.render_mode = (
-            "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
+            "codex-image" if self.render_mode_var.get() == "Codex 대사 작업 시트 렌더" else "local"
         )
         try:
             client = self._client()
@@ -586,7 +586,7 @@ class TranslatorApp:
 
     def _on_render_mode_changed(self, _event: tk.Event | None = None) -> None:
         self.render_mode = (
-            "codex-image" if self.render_mode_var.get() == "Codex 통합 위임" else "local"
+            "codex-image" if self.render_mode_var.get() == "Codex 대사 작업 시트 렌더" else "local"
         )
         self.status_var.set(f"이미지 렌더 방식을 '{self.render_mode_var.get()}'로 설정했습니다.")
 

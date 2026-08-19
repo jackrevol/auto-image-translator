@@ -8,8 +8,8 @@ const path = require("node:path");
 const sharp = require("sharp");
 const {
   buildCodexImageRenderPrompt,
-  buildCodexEndToEndPrompt,
   extractGeneratedImagePaths,
+  extractCodexThreadIds,
   resolveGeneratedImagePath,
   normalizeGeneratedImage,
   cleanupGeneratedImage
@@ -32,16 +32,41 @@ test("최종 답변에 경로가 없어도 해당 Codex 실행 JSON 이벤트에
   ]);
 });
 
-test("Codex 통합 위임 프롬프트는 판독부터 자체 검수까지 한 번에 수행한다", () => {
-  const prompt = buildCodexEndToEndPrompt({
-    attempt: 2,
-    issues: ["오른쪽 말풍선의 일본어가 남아 있음"]
-  });
+test("경로가 없는 Codex 응답은 해당 실행 ID의 생성 폴더에서 결과를 회수한다", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-thread-result-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const threadId = "01a017ea-a8f7-7663-9f9a-c4b0f74e4ce1";
+  const sessionDir = path.join(root, threadId);
+  fs.mkdirSync(sessionDir);
+  const imagePath = path.join(sessionDir, "translated.png");
+  fs.writeFileSync(imagePath, "result");
+  const events = [
+    JSON.stringify({ type: "thread.started", thread_id: threadId }),
+    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "편집을 완료했습니다." } })
+  ].join("\n");
 
-  assert.match(prompt, /별도의 OCR 좌표나 번역문이 제공되지 않는다/);
-  assert.match(prompt, /직접 정밀 판독하고, 번역하고, 원문을 제거하고, 한국어를 식자/);
-  assert.match(prompt, /결과를 자체 검수/);
-  assert.match(prompt, /오른쪽 말풍선의 일본어가 남아 있음/);
+  assert.deepEqual(extractCodexThreadIds(events), [threadId]);
+  assert.equal(resolveGeneratedImagePath(events, root), fs.realpathSync.native(imagePath));
+});
+
+test("병렬 실행에서는 다른 실행 폴더의 최신 이미지를 선택하지 않는다", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-parallel-result-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const ownThreadId = "01a017ea-a8f7-7663-9f9a-c4b0f74e4ce1";
+  const otherThreadId = "01a01809-3a42-72e0-b053-e2afd3c06936";
+  const ownDir = path.join(root, ownThreadId);
+  const otherDir = path.join(root, otherThreadId);
+  fs.mkdirSync(ownDir);
+  fs.mkdirSync(otherDir);
+  const ownImage = path.join(ownDir, "own.png");
+  const otherImage = path.join(otherDir, "other.png");
+  fs.writeFileSync(ownImage, "own");
+  fs.writeFileSync(otherImage, "other");
+  const newer = new Date(Date.now() + 10_000);
+  fs.utimesSync(otherImage, newer, newer);
+  const events = JSON.stringify({ type: "thread.started", thread_id: ownThreadId });
+
+  assert.equal(resolveGeneratedImagePath(events, root), fs.realpathSync.native(ownImage));
 });
 
 test("Codex 이미지 렌더 프롬프트는 정확한 번역과 원본 보존을 강제한다", () => {

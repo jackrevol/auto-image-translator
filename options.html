@@ -51,9 +51,9 @@
       <label for="render-mode">이미지 렌더 방식</label>
       <select id="render-mode" name="renderMode">
         <option value="local">로컬 정밀 렌더 · 빠름</option>
-        <option value="codex-image">Codex 통합 위임 · 판독부터 렌더까지</option>
+        <option value="codex-image">Codex 대사 작업 시트 렌더 · 크롭 결합 후 재조립</option>
       </select>
-      <p class="help">전체 위임은 Codex 내장 이미지 편집이 원문 제거와 한국어 식질 이미지를 직접 생성합니다. API 키는 필요 없지만 이미지마다 생성 사용량과 시간이 크게 늘어납니다.</p>
+      <p class="help">감지된 대사·문구 주변만 잘라 Codex가 번역 식질하고 프로그램이 원래 좌표에 재조립합니다. API 키는 필요 없지만 크롭 수만큼 생성 사용량과 시간이 늘어납니다.</p>
 
       <p class="help page-scan-help">원본 이미지 URL을 직접 내려받아 처리하므로 다른 탭을 보거나 Chrome을 최소화해도 됩니다. 원본을 내려받을 수 없는 특수 이미지만 화면 캡처를 사용합니다.</p>
 
