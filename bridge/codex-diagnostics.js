@@ -50,6 +50,19 @@ function attachCodexDiagnostics(error, { stdout = "", stderr = "", stage = "" } 
   return error;
 }
 
+function isCodexImageSafetyBlocked(output) {
+  const normalized = singleLine(output);
+  return /(?:안전 필터|safety filter).{0,160}(?:차단|거부|중단|block|reject|refus)/i.test(normalized) ||
+    /(?:성적 묘사|sexual (?:content|depiction)).{0,160}(?:차단|거부|block|reject|refus)/i.test(normalized);
+}
+
+function createCodexImageSafetyError(output, stage = "Codex 이미지 렌더") {
+  const error = new Error("Codex 이미지 생성 안전 필터에 차단되었습니다.");
+  error.code = "CODEX_IMAGE_SAFETY_BLOCKED";
+  error.details = collectCodexDiagnostics({ stdout: output, stage });
+  return error;
+}
+
 function collectEventDetails(event, details) {
   if (!event || typeof event !== "object") return;
   const item = event.item && typeof event.item === "object" ? event.item : null;
@@ -108,5 +121,7 @@ function singleLine(value) {
 module.exports = {
   collectCodexDiagnostics,
   createCodexExecutionError,
-  attachCodexDiagnostics
+  attachCodexDiagnostics,
+  isCodexImageSafetyBlocked,
+  createCodexImageSafetyError
 };

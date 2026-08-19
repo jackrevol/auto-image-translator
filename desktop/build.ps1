@@ -29,6 +29,7 @@ $NodeExe = (Get-Command node -ErrorAction Stop).Source
     --add-data "$ProjectRoot\bridge\codex-exec-args.js;bridge" `
     --add-data "$ProjectRoot\bridge\codex-diagnostics.js;bridge" `
     --add-data "$ProjectRoot\bridge\codex-image-renderer.js;bridge" `
+    --add-data "$ProjectRoot\bridge\codex-region-renderer.js;bridge" `
     --add-data "$ProjectRoot\bridge\image-renderer.js;bridge" `
     --add-data "$ProjectRoot\bridge\ocr-preprocessor.js;bridge" `
     --add-data "$ProjectRoot\bridge\ocr-results.js;bridge" `

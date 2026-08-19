@@ -40,21 +40,31 @@ def test_bright_sfx_detail_logs_are_mapped() -> None:
 
 def test_codex_image_render_log_is_mapped() -> None:
     progress = parse_bridge_progress(
-        "[21:12:00] [작업 #10 · 이미지 #4] Codex 이미지 렌더 1회차 진행 중 · 30초 경과"
+        "[21:12:00] [작업 #10 · 이미지 #4] Codex 대사 영역 렌더 1회차 진행 중 · 30초 경과"
     )
 
     assert progress is not None
-    assert progress.stage == "Codex 전체 렌더"
+    assert progress.stage == "Codex 영역 렌더"
     assert progress.state == "running"
 
 
-def test_codex_integrated_render_log_is_mapped() -> None:
+def test_codex_safety_fallback_log_is_mapped() -> None:
     progress = parse_bridge_progress(
-        "[21:12:00] [작업 #10 · 이미지 #4] Codex 통합 번역·렌더 1회차 진행 중 · 30초 경과"
+        "[21:12:00] [작업 #10 · 이미지 #4] Codex 대사 작업 시트 2/3 안전 필터 차단 · 크롭 4개만 로컬 정밀 식질로 대체"
     )
 
     assert progress is not None
-    assert progress.stage == "Codex 통합 위임"
+    assert progress.stage == "로컬 대체 식질"
+    assert progress.state == "running"
+
+
+def test_codex_atlas_log_is_mapped() -> None:
+    progress = parse_bridge_progress(
+        "[21:12:00] [작업 #10 · 이미지 #4] Codex 대사 작업 시트 1/3 준비 · 크롭 4개 · 번역·식질 위임"
+    )
+
+    assert progress is not None
+    assert progress.stage == "Codex 작업 시트"
     assert progress.state == "running"
 
 
