@@ -4,7 +4,8 @@ const DEFAULTS = {
   minWidth: 120,
   minHeight: 80,
   parallelism: 3,
-  maxAutoQaAttempts: 3
+  maxAutoQaAttempts: 3,
+  renderMode: "local"
 };
 
 const form = document.getElementById("settings-form");
@@ -14,6 +15,7 @@ const minWidthInput = document.getElementById("min-width");
 const minHeightInput = document.getElementById("min-height");
 const parallelismInput = document.getElementById("parallelism");
 const maxAutoQaAttemptsInput = document.getElementById("max-auto-qa-attempts");
+const renderModeInput = document.getElementById("render-mode");
 const toggleTokenButton = document.getElementById("toggle-token");
 const testConnectionButton = document.getElementById("test-connection");
 const saveStatus = document.getElementById("save-status");
@@ -34,7 +36,8 @@ form.addEventListener("submit", async (event) => {
         1,
         5,
         DEFAULTS.maxAutoQaAttempts
-      )
+      ),
+      renderMode: renderModeInput.value === "codex-image" ? "codex-image" : "local"
     };
 
     await chrome.storage.local.set(settings);
@@ -77,6 +80,7 @@ async function loadSettings() {
   minHeightInput.value = settings.minHeight;
   parallelismInput.value = settings.parallelism;
   maxAutoQaAttemptsInput.value = settings.maxAutoQaAttempts;
+  renderModeInput.value = settings.renderMode === "codex-image" ? "codex-image" : "local";
 }
 
 function normalizeBridgeUrl(value) {

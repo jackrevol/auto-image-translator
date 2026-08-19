@@ -88,6 +88,7 @@ class TranslatorApp:
         self.parallel_lock = threading.Lock()
         self.parallel_limit = 3
         self.quality_attempt_limit = 3
+        self.render_mode = "local"
         self.queued_review_images: dict[int, str] = {}
         self.preview_dir = Path(tempfile.mkdtemp(prefix="jit-result-preview-"))
         self.translated_preview_paths: dict[int, Path] = {}
@@ -102,6 +103,7 @@ class TranslatorApp:
         self.bridge_status_var = tk.StringVar(value="통합 브리지 시작 중...")
         self.parallel_var = tk.StringVar(value="3")
         self.quality_attempt_var = tk.StringVar(value="3")
+        self.render_mode_var = tk.StringVar(value="로컬 정밀 렌더")
         self.status_var = tk.StringVar(value="ZIP 파일을 끌어다 놓거나 선택하세요.")
         self.progress_var = tk.DoubleVar(value=0)
 
@@ -195,11 +197,21 @@ class TranslatorApp:
         )
         self.quality_attempt_combo.grid(row=2, column=1, sticky="w", pady=(10, 0))
         self.quality_attempt_combo.bind("<<ComboboxSelected>>", self._on_quality_attempts_changed)
+        ttk.Label(output, text="이미지 렌더 방식").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        self.render_mode_combo = ttk.Combobox(
+            output,
+            textvariable=self.render_mode_var,
+            values=("로컬 정밀 렌더", "Codex 전체 위임 렌더"),
+            state="readonly",
+            width=18,
+        )
+        self.render_mode_combo.grid(row=3, column=1, sticky="w", pady=(10, 0))
+        self.render_mode_combo.bind("<<ComboboxSelected>>", self._on_render_mode_changed)
         ttk.Label(
             output,
-            text="기본 3개 · 번역 중에도 1~6개로 변경 가능 · 실행 중 작업은 끝낸 뒤 새 제한을 적용합니다.",
+            text="로컬 렌더는 빠르고 안정적입니다. 전체 위임 렌더는 Codex가 원문 제거와 식질 이미지를 직접 생성해 느리고 사용량이 큽니다.",
             foreground="#555555",
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         image_frame = ttk.LabelFrame(outer, text="이미지별 진행 상황 · ZIP + 웹", padding=8)
         image_frame.grid(row=5, column=0, sticky="nsew", pady=(0, 12))
@@ -352,6 +364,9 @@ class TranslatorApp:
             self.bridge_url_var.get().strip(),
             self.bridge_token_var.get().strip(),
             max_auto_qa_attempts=self.quality_attempt_limit,
+            render_mode=(
+                "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+            ),
         )
 
     def _start(self) -> None:
@@ -366,13 +381,16 @@ class TranslatorApp:
         if not self.bridge_ready:
             messagebox.showwarning(APP_NAME, "통합 브리지가 준비될 때까지 잠시 기다려 주세요.")
             return
+        self._set_parallel_limit(int(self.parallel_var.get()))
+        self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
+        self.render_mode = (
+            "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+        )
         try:
             client = self._client()
         except Exception as exc:
             messagebox.showerror(APP_NAME, str(exc))
             return
-        self._set_parallel_limit(int(self.parallel_var.get()))
-        self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
         self.cancel_event.clear()
         with self.skip_lock:
             self.skipped_zip_images.clear()
@@ -383,6 +401,7 @@ class TranslatorApp:
         self._clear_image_progress()
         self.start_button.configure(state="disabled")
         self.quality_attempt_combo.configure(state="disabled")
+        self.render_mode_combo.configure(state="disabled")
         self.cancel_button.configure(state="normal")
         self.cancel_all_button.configure(state="normal")
         self.open_button.configure(state="disabled")
@@ -530,6 +549,7 @@ class TranslatorApp:
     def _finish_controls(self) -> None:
         self.start_button.configure(state="normal" if self.bridge_ready else "disabled")
         self.quality_attempt_combo.configure(state="readonly")
+        self.render_mode_combo.configure(state="readonly")
         self.cancel_button.configure(state="disabled")
         self.cancel_all_button.configure(state="disabled")
         self._refresh_skip_button()
@@ -556,6 +576,12 @@ class TranslatorApp:
     def _on_quality_attempts_changed(self, _event: tk.Event | None = None) -> None:
         self.quality_attempt_limit = max(1, min(5, int(self.quality_attempt_var.get())))
         self.status_var.set(f"자동 재검수 한도를 이미지당 {self.quality_attempt_limit}회로 설정했습니다.")
+
+    def _on_render_mode_changed(self, _event: tk.Event | None = None) -> None:
+        self.render_mode = (
+            "codex-image" if self.render_mode_var.get() == "Codex 전체 위임 렌더" else "local"
+        )
+        self.status_var.set(f"이미지 렌더 방식을 '{self.render_mode_var.get()}'로 설정했습니다.")
 
     def _cancel(self) -> None:
         self.cancel_event.set()

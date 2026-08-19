@@ -22,7 +22,13 @@ const {
 } = require("./quality-prompts.js");
 const { TaskSemaphore } = require("./task-semaphore.js");
 const { removeTranslatorTempDir } = require("./temp-cleanup.js");
-const { buildCodexExecArgs } = require("./codex-exec-args.js");
+const { buildCodexExecArgs, buildCodexImageRenderArgs } = require("./codex-exec-args.js");
+const {
+  buildCodexImageRenderPrompt,
+  resolveGeneratedImagePath,
+  normalizeGeneratedImage,
+  cleanupGeneratedImage
+} = require("./codex-image-renderer.js");
 
 const HOST = "127.0.0.1";
 const PORT = normalizePort(process.env.IMAGE_TRANSLATOR_PORT || "38473");
@@ -276,6 +282,7 @@ function runCodexSync(args) {
 
 async function translateImage(image, metadata, requestId, control) {
   const imageIndex = normalizeImageIndex(metadata?.index);
+  const renderMode = normalizeRenderMode(metadata?.renderMode);
   assertTranslationActive(control);
   if (!image?.mimeType || !image?.data) throw httpError(400, "이미지 데이터가 없습니다.");
   const extensions = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
@@ -297,6 +304,7 @@ async function translateImage(image, metadata, requestId, control) {
   const translationPath = path.join(tempDir, "translation-edit.json");
   fs.writeFileSync(imagePath, bytes);
   logProgress(requestId, imageIndex, `원본 준비 완료 · ${path.basename(imagePath)} · ${formatBytes(bytes.length)}`);
+  logProgress(requestId, imageIndex, `렌더 모드 · ${renderMode === "codex-image" ? "Codex 전체 위임" : "로컬 정밀 렌더"}`);
 
   try {
     let ocrReference = null;
@@ -422,13 +430,26 @@ async function translateImage(image, metadata, requestId, control) {
       : normalizeQaAttempts(metadata?.maxAutoQaAttempts);
     let visualReview = null;
     let completedQaAttempts = 0;
+    let latestPreviewBuffer = null;
     for (let attempt = 1; attempt <= maximumQaAttempts; attempt += 1) {
       assertTranslationActive(control);
       const previewPath = path.join(tempDir, `quality-preview-${attempt}.webp`);
       const visualQaPath = path.join(tempDir, `visual-qa-${attempt}.json`);
       const modeLabel = manualReview ? "사용자 추가 검수" : `자동 검수 ${attempt}/${maximumQaAttempts}`;
       logProgress(requestId, imageIndex, `${modeLabel} · 교정본 합성 시작`);
-      const previewBuffer = await renderTranslatedImage(imagePath, result.regions);
+      const previewBuffer = renderMode === "codex-image"
+        ? await renderTranslatedImageWithCodex({
+            requestId,
+            imageIndex,
+            tempDir,
+            imagePath,
+            regions: result.regions,
+            attempt,
+            issues: visualReview?.issues,
+            control
+          })
+        : await renderTranslatedImage(imagePath, result.regions);
+      latestPreviewBuffer = previewBuffer;
       fs.writeFileSync(previewPath, previewBuffer);
       logProgress(requestId, imageIndex, `${modeLabel} · 검수용 WebP 준비 완료 · ${formatBytes(previewBuffer.length)}`);
 
@@ -508,8 +529,28 @@ async function translateImage(image, metadata, requestId, control) {
       return { ...result, qualityReview, editedImage: null };
     }
     assertTranslationActive(control);
-    logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
-    const editedBuffer = await renderTranslatedImage(imagePath, result.regions);
+    let editedBuffer;
+    if (renderMode === "codex-image") {
+      if (visualReview?.passed === true && latestPreviewBuffer) {
+        editedBuffer = latestPreviewBuffer;
+        logProgress(requestId, imageIndex, "검수 통과한 Codex 렌더 결과를 최종 이미지로 확정");
+      } else {
+        logProgress(requestId, imageIndex, "최종 교정안을 Codex 이미지 렌더에 다시 위임");
+        editedBuffer = await renderTranslatedImageWithCodex({
+          requestId,
+          imageIndex,
+          tempDir,
+          imagePath,
+          regions: result.regions,
+          attempt: completedQaAttempts + 1,
+          issues: visualReview?.issues,
+          control
+        });
+      }
+    } else {
+      logProgress(requestId, imageIndex, "최종 원문 제거 및 한국어 이미지 재합성 시작");
+      editedBuffer = await renderTranslatedImage(imagePath, result.regions);
+    }
     logProgress(requestId, imageIndex, `교체용 WebP 생성 완료 · ${formatBytes(editedBuffer.length)}`);
     return {
       ...result,
@@ -521,6 +562,52 @@ async function translateImage(image, metadata, requestId, control) {
     };
   } finally {
     await cleanupTempDirSafely(tempDir, requestId, imageIndex);
+  }
+}
+
+async function renderTranslatedImageWithCodex({
+  requestId,
+  imageIndex,
+  tempDir,
+  imagePath,
+  regions,
+  attempt,
+  issues,
+  control
+}) {
+  assertTranslationActive(control);
+  const outputPath = path.join(tempDir, `codex-image-render-${attempt}.txt`);
+  if (fs.existsSync(outputPath)) fs.rmSync(outputPath, { force: true });
+  const startedAt = Date.now();
+  logProgress(requestId, imageIndex, `Codex 이미지 렌더 ${attempt}회차 시작 · 원문 제거·한국어 식질 전체 위임`);
+  const heartbeat = setInterval(() => {
+    logProgress(requestId, imageIndex, `Codex 이미지 렌더 ${attempt}회차 진행 중 · ${formatDuration(Date.now() - startedAt)} 경과`);
+  }, 10_000);
+  let generatedPath = null;
+  try {
+    await runCodex(
+      buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }),
+      buildCodexImageRenderPrompt(regions, { attempt, issues }),
+      15 * 60 * 1000,
+      control
+    );
+    assertTranslationActive(control);
+    if (!fs.existsSync(outputPath)) throw new Error("Codex 이미지 렌더 결과 메시지가 없습니다.");
+    generatedPath = resolveGeneratedImagePath(fs.readFileSync(outputPath, "utf8"));
+    const buffer = await normalizeGeneratedImage(generatedPath, imagePath);
+    logProgress(
+      requestId,
+      imageIndex,
+      `Codex 이미지 렌더 ${attempt}회차 완료 · 원본 크기로 정규화 · ${formatBytes(buffer.length)} · ${formatDuration(Date.now() - startedAt)}`
+    );
+    return buffer;
+  } finally {
+    clearInterval(heartbeat);
+    if (generatedPath) {
+      cleanupGeneratedImage(generatedPath).catch((error) => {
+        logProgress(requestId, imageIndex, `Codex 생성 이미지 지연 정리 · ${error.code || error.message}`);
+      });
+    }
   }
 }
 
@@ -737,6 +824,10 @@ function normalizeImageIndex(value) {
 function normalizePositiveInteger(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function normalizeRenderMode(value) {
+  return value === "codex-image" ? "codex-image" : "local";
 }
 
 function estimateBase64Bytes(value) {

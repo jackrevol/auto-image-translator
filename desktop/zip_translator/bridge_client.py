@@ -24,6 +24,7 @@ MIME_TYPES = {
 # JSON Base64 오버헤드를 포함해 브리지의 20MB 본문 한도 안에 들어가게 합니다.
 MAX_UPLOAD_BYTES = 14 * 1024 * 1024
 TRANSLATION_TIMEOUT_SECONDS = 60 * 60
+CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS = 3 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -53,10 +54,16 @@ class BridgeClient:
         token: str,
         timeout: int = TRANSLATION_TIMEOUT_SECONDS,
         max_auto_qa_attempts: int = 3,
+        render_mode: str = "local",
     ) -> None:
         self.url = url.rstrip("/")
         self.token = token.strip()
-        self.timeout = max(30, int(timeout))
+        self.render_mode = "codex-image" if render_mode == "codex-image" else "local"
+        selected_timeout = max(30, int(timeout))
+        self.timeout = max(
+            selected_timeout,
+            CODEX_IMAGE_TRANSLATION_TIMEOUT_SECONDS if self.render_mode == "codex-image" else 30,
+        )
         self.max_auto_qa_attempts = max(1, min(5, int(max_auto_qa_attempts)))
         if not self.url.startswith(("http://127.0.0.1:", "http://localhost:")):
             raise ValueError("브리지 주소는 이 PC의 127.0.0.1 또는 localhost만 사용할 수 있습니다.")
@@ -105,6 +112,7 @@ class BridgeClient:
                 "archiveName": name,
                 "qualityReviewMode": "manual" if manual_review else "automatic",
                 "maxAutoQaAttempts": 1 if manual_review else self.max_auto_qa_attempts,
+                "renderMode": self.render_mode,
             },
         }
         response = self._request_json("POST", "/translate", payload)

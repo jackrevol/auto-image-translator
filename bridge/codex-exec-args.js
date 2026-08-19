@@ -18,4 +18,21 @@ function buildCodexExecArgs({ tempDir, images, schemaPath, outputPath }) {
   ];
 }
 
-module.exports = { buildCodexExecArgs };
+function buildCodexImageRenderArgs({ tempDir, imagePath, outputPath }) {
+  return [
+    "exec",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--enable", "image_generation",
+    "--sandbox", "read-only",
+    "--skip-git-repo-check",
+    "--ignore-rules",
+    "--color", "never",
+    "-C", tempDir,
+    "--image", imagePath,
+    "--output-last-message", outputPath,
+    "-"
+  ];
+}
+
+module.exports = { buildCodexExecArgs, buildCodexImageRenderArgs };

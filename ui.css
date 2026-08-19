@@ -66,7 +66,8 @@ h1 { margin: 0 0 4px; font-size: 17px; line-height: 1.3; }
 .brand-row p { margin: 0; color: #68758a; font-size: 12px; }
 
 button,
-input { font: inherit; }
+input,
+select { font: inherit; }
 
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: 0.62; }
@@ -161,7 +162,8 @@ form label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   height: 44px;
   padding: 0 12px;
@@ -172,7 +174,8 @@ input {
   outline: none;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #506fe1;
   box-shadow: 0 0 0 3px rgba(80, 111, 225, 0.13);
 }
